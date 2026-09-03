@@ -1,7 +1,8 @@
 import streamlit as st
 import requests
 
-API_URL = "http://localhost:8000"
+import os
+API_URL = os.environ.get("API_URL", "http://localhost:8000")
 
 st.set_page_config(page_title="What Happened Here?", layout="wide")
 st.title("What Happened Here? — AI Video Understanding")
@@ -24,6 +25,10 @@ if st.button("Analyze"):
             st.session_state.result = res.json()
         else:
             st.error(res.json().get("error", "Analysis failed"))
+
+if st.button("Reset"):
+    st.session_state.result = None
+    st.rerun()
 
 if st.session_state.result:
     result = st.session_state.result
