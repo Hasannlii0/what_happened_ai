@@ -29,7 +29,9 @@ def run():
         persist=True,
         tracker="bytetrack.yaml",
         save=True,
-        conf=0.4
+        conf=0.4,
+        imgsz=640,
+        vid_stride=5
     )
 
     detections = []

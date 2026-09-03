@@ -1,0 +1,24 @@
+services:
+  api:
+    build: .
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - huggingface-cache:/root/.cache/huggingface
+
+  ui:
+    build: .
+    command: streamlit run ui/app.py --server.address=0.0.0.0
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
+    environment:
+      - API_URL=http://api:8000
+    volumes:
+      - .:/app
+
+volumes:
+  huggingface-cache:

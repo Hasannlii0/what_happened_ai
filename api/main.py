@@ -39,6 +39,10 @@ def analyze():
     if not os.path.exists("test_video.mp4"):
         return JSONResponse(status_code=404, content={"error": "No video uploaded yet."})
 
+    for path in ["perception/detections.json", "perception/output_annotated.mp4"]:
+        if os.path.exists(path):
+            os.remove(path)
+
     result = subprocess.run(
         [sys.executable, "perception/detect_track.py"],
         capture_output=True,
