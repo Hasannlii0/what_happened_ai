@@ -1,8 +1,0 @@
-ultralytics
-opencv-python
-fastapi
-uvicorn
-pydantic
-python-multipart
-streamlit
-transformers

@@ -16,10 +16,13 @@ from schema import Detection, DetectionLog
 VIDEO_PATH = "test_video.mp4"
 OUTPUT_JSON = "perception/detections.json"
 OUTPUT_VIDEO = "perception/output_annotated.mp4"
+VID_STRIDE = 5  # must match the value passed to model.track() below
 
 def run():
     cap = cv2.VideoCapture(VIDEO_PATH)
     fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     cap.release()
 
     model = YOLO("yolov8n.pt")
@@ -31,17 +34,23 @@ def run():
         save=True,
         conf=0.4,
         imgsz=640,
-        vid_stride=5
+        vid_stride=VID_STRIDE
     )
 
     detections = []
-    for frame_idx, r in enumerate(results):
+    for result_idx, r in enumerate(results):
         if r.boxes.id is None:
             continue
+        # BUG FIX: `result_idx` is the index into the yielded results, not the
+        # actual video frame number. Because vid_stride=VID_STRIDE skips frames,
+        # the real frame number is result_idx * VID_STRIDE — using result_idx
+        # directly compressed every timestamp by a factor of VID_STRIDE.
+        real_frame = result_idx * VID_STRIDE
+        timestamp = real_frame / fps
         for box, track_id, cls, conf in zip(r.boxes.xyxy, r.boxes.id, r.boxes.cls, r.boxes.conf):
             detections.append(Detection(
-                frame=frame_idx,
-                timestamp=frame_idx / fps,
+                frame=real_frame,
+                timestamp=timestamp,
                 track_id=int(track_id),
                 class_name=model.names[int(cls)],
                 bbox=box.tolist(),
@@ -51,6 +60,8 @@ def run():
     log = DetectionLog(
         video_id="test_video",
         fps=fps,
+        frame_width=frame_width,
+        frame_height=frame_height,
         detections=detections
     )
 

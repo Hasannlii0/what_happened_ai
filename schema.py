@@ -14,6 +14,8 @@ class Detection(BaseModel):
 class DetectionLog(BaseModel):
     video_id: str
     fps: float
+    frame_width: Optional[int] = None
+    frame_height: Optional[int] = None
     detections: List[Detection]
 
 
