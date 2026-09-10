@@ -14,7 +14,6 @@ uploaded_file = st.file_uploader("Upload a video", type=["mp4"])
 
 if uploaded_file is not None:
     if st.button("Upload"):
-        files = {"file": uploaded_file.getvalue()}
         res = requests.post(f"{API_URL}/upload", files={"file": uploaded_file})
         st.success("Video uploaded. Now run analysis.")
 

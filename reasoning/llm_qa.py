@@ -1,4 +1,5 @@
 import json
+import os
 from transformers import T5Tokenizer, T5ForConditionalGeneration
 import sys
 from pathlib import Path
@@ -12,8 +13,25 @@ if root_dir not in sys.path:
 
 from schema import EventLog
 
-tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-large")
-model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-large")
+# Lazy-loaded: loading flan-t5-large (~3GB) at import time made the API
+# process slow to start (and reload the model on every restart) even for
+# requests that never call /ask. It's now loaded once, on first use.
+_MODEL_NAME = os.environ.get("QA_MODEL_NAME", "google/flan-t5-large")
+_tokenizer = None
+_model = None
+
+# Beam search (num_beams=4) is noticeably slow on CPU for a "large" model.
+# Override with e.g. SUMMARY_NUM_BEAMS=1 for much faster (greedy) generation,
+# or leave the default if summary quality matters more than speed.
+_SUMMARY_NUM_BEAMS = int(os.environ.get("SUMMARY_NUM_BEAMS", "2"))
+
+
+def _get_model():
+    global _tokenizer, _model
+    if _model is None:
+        _tokenizer = T5Tokenizer.from_pretrained(_MODEL_NAME)
+        _model = T5ForConditionalGeneration.from_pretrained(_MODEL_NAME)
+    return _tokenizer, _model
 
 
 def build_context(event_log: EventLog) -> str:
@@ -36,6 +54,7 @@ def build_context(event_log: EventLog) -> str:
 
 
 def ask(event_log: EventLog, question: str) -> str:
+    tokenizer, model = _get_model()
     context = build_context(event_log)
     prompt = f"Event log: {context}\n\nQuestion: {question}\nAnswer based only on the event log:"
     input_ids = tokenizer(prompt, return_tensors="pt", truncation=True).input_ids
@@ -44,10 +63,11 @@ def ask(event_log: EventLog, question: str) -> str:
 
 
 def generate_summary(event_log: EventLog) -> str:
+    tokenizer, model = _get_model()
     context = build_context(event_log)
     prompt = f"Write a detailed paragraph describing everything that happened, in chronological order, based on this event log: {context}"
     input_ids = tokenizer(prompt, return_tensors="pt", truncation=True).input_ids
-    outputs = model.generate(input_ids, max_new_tokens=250, min_new_tokens=60, num_beams=4)
+    outputs = model.generate(input_ids, max_new_tokens=250, min_new_tokens=60, num_beams=_SUMMARY_NUM_BEAMS)
     return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
 
