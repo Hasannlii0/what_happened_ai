@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+mlruns/
 *.mp4
 !yolov8n.pt
 runs/
