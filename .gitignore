@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+runs/
+*.mp4
+*.avi
+detections.json
+.env

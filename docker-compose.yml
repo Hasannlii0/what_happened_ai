@@ -6,14 +6,16 @@ services:
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
-    environment:
-      # Faster (lower quality) LLM summary: use google/flan-t5-base instead
-      # of the default flan-t5-large, and/or drop beam search to 1 (greedy).
-      - QA_MODEL_NAME=google/flan-t5-large
-      - SUMMARY_NUM_BEAMS=2
     volumes:
       - .:/app
       - huggingface-cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   ui:
     build:
@@ -27,10 +29,6 @@ services:
     environment:
       - API_URL=http://api:8000
     volumes:
-      # NOTE: mounts the whole project (not just ./ui) because the API
-      # container writes perception/output_annotated.mp4 to the shared host
-      # directory, and the UI reads that same relative path to display the
-      # video. Mounting only ./ui here caused a FileNotFoundError.
       - .:/app
 
 volumes:
