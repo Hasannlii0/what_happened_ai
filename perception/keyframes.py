@@ -1,5 +1,6 @@
 import cv2
 import os
+
 def extract_keyframes(video_path, output_dir="perception/keyframes", num_frames=3, resize_width=512):
     os.makedirs(output_dir, exist_ok=True)
     cap = cv2.VideoCapture(video_path)

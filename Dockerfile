@@ -10,8 +10,8 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 COPY requirements-api.txt .
-RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-RUN pip install -r requirements-api.txt
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu121
+RUN pip install --no-cache-dir -r requirements-api.txt
 
 COPY . .
 

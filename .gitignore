@@ -4,5 +4,6 @@ __pycache__/
 runs/
 *.mp4
 *.avi
-detections.json
+perception/detections.json
+perception/keyframes/
 .env
