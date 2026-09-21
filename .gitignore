@@ -11,3 +11,6 @@ perception/keyframes/
 reasoning/tts_output/
 temp_audio.wav
 temp_recording.wav
+mlflow.db
+.pytest_cache/
+.ruff_cache/
