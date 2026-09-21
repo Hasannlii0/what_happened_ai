@@ -41,6 +41,7 @@ def extract_keyframes(
     output_dir=config.KEYFRAMES_DIR,
     num_frames=config.KEYFRAME_COUNT,
     resize_width=config.KEYFRAME_RESIZE_WIDTH,
+    timestamps=None,
 ):
     cap = cv2.VideoCapture(str(video_path))
     try:
@@ -48,12 +49,22 @@ def extract_keyframes(
             raise ValueError(f"cannot read video: {video_path}")
 
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        if total_frames > 0:
+        fps = cap.get(cv2.CAP_PROP_FPS)
+
+        frames = []
+        if timestamps and total_frames > 0 and fps > 0:
+            indices = sorted(
+                {min(int(t * fps), total_frames - 1) for t in timestamps if t >= 0}
+            )
+            frames = _frames_by_seek(cap, indices)
+
+        # Seeking to a requested timestamp can come back empty, so fall through
+        # to an even sample rather than leaving the caller with no frames.
+        if not frames and total_frames > 0:
             frames = _frames_by_seek(cap, _sample_indices(total_frames, num_frames))
-        else:
+        if not frames:
             # Fragmented and variable-frame-rate containers report no frame count
             # and seek unreliably, so walk the stream instead of jumping in it.
-            fps = cap.get(cv2.CAP_PROP_FPS)
             frames = _frames_by_scan(cap, num_frames, max(int(fps), 1))
     finally:
         cap.release()

@@ -33,6 +33,15 @@ def summarize(event_log: EventLog) -> str:
     return " ".join(lines)
 
 
+def format_event_context(event_log: EventLog) -> str:
+    """The event log as a compact timestamped table, for grounding a VLM prompt."""
+    lines = []
+    for e in event_log.events:
+        target = f" {e.object}" if e.object else ""
+        lines.append(f"{e.t:6.1f}s  {e.subject} {e.event}{target}")
+    return "\n".join(lines)
+
+
 if __name__ == "__main__":
     import json
 

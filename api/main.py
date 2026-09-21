@@ -15,8 +15,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import ValidationError
 
 import config
-from reasoning.event_extractor import extract_events
-from reasoning.summarizer import summarize
+from reasoning.event_extractor import extract_events, select_keyframe_times
+from reasoning.summarizer import format_event_context, summarize
 from reasoning.tts import synthesize_speech
 from schema import AnalysisResult, DetectionLog
 
@@ -45,6 +45,35 @@ def _last_error_line(result: subprocess.CompletedProcess) -> str:
     if lines:
         return lines[-1][:200]
     return f"detector exited with code {result.returncode}"
+
+
+def _grounded_keyframes(event_log):
+    """Frames sampled at the moments the detector flagged, plus the log itself.
+
+    Evenly spaced frames routinely miss the one instant something changed hands.
+    """
+    from perception.keyframes import extract_keyframes
+
+    times = select_keyframe_times(event_log, config.KEYFRAME_COUNT) if event_log else []
+    paths = extract_keyframes(str(config.VIDEO_PATH), timestamps=times or None)
+    context = format_event_context(event_log) if event_log else ""
+    return paths, context, times
+
+
+def _events_from_last_analysis():
+    """Re-derive the event log from the detections already on disk.
+
+    Keeps /ask consistent with the last analysis without holding the log in
+    module state, which would go stale the moment a new video is uploaded.
+    """
+    if not config.DETECTIONS_JSON.exists():
+        return None
+    try:
+        with open(config.DETECTIONS_JSON) as f:
+            return extract_events(DetectionLog(**json.load(f)))
+    except (OSError, json.JSONDecodeError, ValidationError):
+        logger.exception("could not reload events to ground the question")
+        return None
 
 
 @app.post("/upload")
@@ -161,13 +190,12 @@ def _run_analysis():
     event_log = extract_events(detection_log)
 
     try:
-        from perception.keyframes import extract_keyframes
         from reasoning.vlm_qa import describe_scene
 
-        keyframe_paths = extract_keyframes(str(config.VIDEO_PATH))
+        keyframe_paths, events_text, frame_times = _grounded_keyframes(event_log)
         if not keyframe_paths:
             raise RuntimeError("no frames could be decoded from the video")
-        summary_text = describe_scene(keyframe_paths)
+        summary_text = describe_scene(keyframe_paths, events_text, frame_times)
         summary_source = "vlm"
     except Exception:
         logger.exception("scene description failed, falling back to the template")
@@ -207,16 +235,17 @@ def ask_question(question: str):
         return JSONResponse(status_code=404, content={"error": "No video uploaded yet."})
 
     try:
-        from perception.keyframes import extract_keyframes
         from reasoning.vlm_qa import ask_vlm
 
-        keyframe_paths = extract_keyframes(str(config.VIDEO_PATH))
+        keyframe_paths, events_text, frame_times = _grounded_keyframes(
+            _events_from_last_analysis()
+        )
         if not keyframe_paths:
             return JSONResponse(
                 status_code=422,
                 content={"error": "Could not read any frames from the video."},
             )
-        answer = ask_vlm(keyframe_paths, question)
+        answer = ask_vlm(keyframe_paths, question, events_text, frame_times)
     except Exception as e:
         logger.exception("could not answer question")
         return JSONResponse(

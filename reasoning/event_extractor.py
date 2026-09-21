@@ -150,6 +150,32 @@ def extract_events(detection_log: DetectionLog, proximity_ratio=None) -> EventLo
     return EventLog(video_id=detection_log.video_id, events=events)
 
 
+# An object changing hands is the moment worth looking at; a person merely
+# entering is not. Evenly spaced sampling misses the former almost every time.
+KEYFRAME_PRIORITY = {"place": 0, "pick_up": 1, "approach": 2, "enter": 3, "exit": 4}
+
+
+def select_keyframe_times(event_log, count, min_gap=0.5):
+    """Timestamps of the most informative moments, in chronological order.
+
+    min_gap keeps two events at the same instant from spending the whole budget
+    on one moment.
+    """
+    ranked = sorted(
+        event_log.events,
+        key=lambda e: (KEYFRAME_PRIORITY.get(e.event, len(KEYFRAME_PRIORITY)), e.t),
+    )
+
+    chosen = []
+    for event in ranked:
+        if len(chosen) >= count:
+            break
+        if all(abs(event.t - picked) >= min_gap for picked in chosen):
+            chosen.append(event.t)
+
+    return sorted(chosen)
+
+
 if __name__ == "__main__":
     with open(config.REPO_ROOT / "reasoning" / "fake_detections.json") as f:
         data = json.load(f)

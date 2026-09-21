@@ -38,14 +38,42 @@ def _load():
     return _model, _processor, _device
 
 
-def ask_vlm(image_paths: list[str], question: str) -> str:
+def build_prompt(question: str, events_text: str = "", frame_times=None) -> str:
+    """Wrap a question in what the detector already knows.
+
+    The model sees a handful of stills with no timeline, so it cannot place
+    anything in time or count people it never saw. The event log supplies both.
+    """
+    parts = []
+    if events_text:
+        parts.append(
+            "A person/object detector already tracked this clip and logged "
+            "these events, with timestamps in seconds:\n" + events_text
+        )
+    if frame_times:
+        parts.append(
+            "The images are frames captured at: "
+            + ", ".join(f"{t:.1f}s" for t in frame_times)
+        )
+    parts.append(question)
+    return "\n\n".join(parts)
+
+
+def ask_vlm(
+    image_paths: list[str],
+    question: str,
+    events_text: str = "",
+    frame_times=None,
+) -> str:
     model, processor, device = _load()
 
     if device.startswith("cuda"):
         torch.cuda.empty_cache()
 
     content = [{"type": "image", "image": str(path)} for path in image_paths]
-    content.append({"type": "text", "text": question})
+    content.append(
+        {"type": "text", "text": build_prompt(question, events_text, frame_times)}
+    )
 
     messages = [{"role": "user", "content": content}]
 
@@ -62,7 +90,14 @@ def ask_vlm(image_paths: list[str], question: str) -> str:
         return_tensors="pt",
     ).to(device)
 
-    generated_ids = model.generate(**inputs, max_new_tokens=200)
+    generated_ids = model.generate(
+        **inputs,
+        max_new_tokens=config.VLM_MAX_NEW_TOKENS,
+        # A 2B model asked about several stills will otherwise loop the same
+        # sentence until it runs out of budget.
+        repetition_penalty=1.15,
+        no_repeat_ngram_size=4,
+    )
     generated_ids_trimmed = [
         out_ids[len(in_ids) :]
         for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
@@ -75,10 +110,17 @@ def ask_vlm(image_paths: list[str], question: str) -> str:
     return output_text[0].strip()
 
 
-def describe_scene(image_paths: list[str]) -> str:
+def describe_scene(
+    image_paths: list[str], events_text: str = "", frame_times=None
+) -> str:
     return ask_vlm(
         image_paths,
-        "Describe what you see across these frames from a video, in chronological order, focusing on people, objects, and actions.",
+        "Write a short factual paragraph, at most four sentences, saying what "
+        "happens in this clip. Describe the people and objects and what they do, "
+        "using the logged events for timing. Do not number the frames, do not "
+        "mention the camera, and do not repeat yourself.",
+        events_text,
+        frame_times,
     )
 
 
