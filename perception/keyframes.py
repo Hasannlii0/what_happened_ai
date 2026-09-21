@@ -1,32 +1,83 @@
 import os
+import sys
+from pathlib import Path
 
 import cv2
 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import config
 
-def extract_keyframes(
-    video_path, output_dir="perception/keyframes", num_frames=3, resize_width=512
-):
-    os.makedirs(output_dir, exist_ok=True)
-    cap = cv2.VideoCapture(video_path)
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    frame_indices = [int(i * total_frames / num_frames) for i in range(num_frames)]
 
-    saved_paths = []
-    for idx in frame_indices:
+def _sample_indices(total_frames, num_frames):
+    count = min(num_frames, total_frames)
+    return sorted({int((i + 0.5) * total_frames / count) for i in range(count)})
+
+
+def _frames_by_seek(cap, indices):
+    frames = []
+    for idx in indices:
         cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
         ret, frame = cap.read()
         if ret:
-            h, w = frame.shape[:2]
-            new_h = int(h * (resize_width / w))
-            frame = cv2.resize(frame, (resize_width, new_h))
-            path = f"{output_dir}/frame_{idx}.jpg"
-            cv2.imwrite(path, frame)
-            saved_paths.append(path)
+            frames.append(frame)
+    return frames
 
-    cap.release()
+
+def _frames_by_scan(cap, num_frames, stride):
+    frames = []
+    idx = 0
+    while len(frames) < num_frames:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        if idx % stride == 0:
+            frames.append(frame)
+        idx += 1
+    return frames
+
+
+def extract_keyframes(
+    video_path,
+    output_dir=config.KEYFRAMES_DIR,
+    num_frames=config.KEYFRAME_COUNT,
+    resize_width=config.KEYFRAME_RESIZE_WIDTH,
+):
+    cap = cv2.VideoCapture(str(video_path))
+    try:
+        if not cap.isOpened():
+            raise ValueError(f"cannot read video: {video_path}")
+
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if total_frames > 0:
+            frames = _frames_by_seek(cap, _sample_indices(total_frames, num_frames))
+        else:
+            # Fragmented and variable-frame-rate containers report no frame count
+            # and seek unreliably, so walk the stream instead of jumping in it.
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            frames = _frames_by_scan(cap, num_frames, max(int(fps), 1))
+    finally:
+        cap.release()
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for stale in output_dir.glob("frame_*.jpg"):
+        os.remove(stale)
+
+    saved_paths = []
+    for i, frame in enumerate(frames):
+        h, w = frame.shape[:2]
+        frame = cv2.resize(frame, (resize_width, max(int(h * resize_width / w), 1)))
+        path = output_dir / f"frame_{i}.jpg"
+        if not cv2.imwrite(str(path), frame):
+            raise OSError(f"could not write keyframe: {path}")
+        saved_paths.append(str(path))
+
+    if not saved_paths:
+        raise ValueError(f"no decodable frames in video: {video_path}")
+
     return saved_paths
 
 
 if __name__ == "__main__":
-    paths = extract_keyframes("test_video.mp4")
+    paths = extract_keyframes(config.VIDEO_PATH)
     print(f"Saved {len(paths)} keyframes: {paths}")

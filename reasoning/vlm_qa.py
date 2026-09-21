@@ -1,4 +1,5 @@
 import os
+import sys
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
@@ -6,20 +7,37 @@ import torch
 from qwen_vl_utils import process_vision_info
 from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
 
-MODEL_NAME = "Qwen/Qwen2-VL-2B-Instruct"
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+import config
 
-model = Qwen2VLForConditionalGeneration.from_pretrained(
-    MODEL_NAME, torch_dtype=torch.float16, device_map=device
-)
-processor = AutoProcessor.from_pretrained(MODEL_NAME)
+_model = None
+_processor = None
+_device = None
+
+
+def _load():
+    global _model, _processor, _device
+
+    if _model is None:
+        device = config.VLM_DEVICE or ("cuda" if torch.cuda.is_available() else "cpu")
+        dtype = torch.float16 if device.startswith("cuda") else torch.float32
+        model = Qwen2VLForConditionalGeneration.from_pretrained(
+            config.VLM_MODEL, torch_dtype=dtype, device_map=device
+        )
+        processor = AutoProcessor.from_pretrained(config.VLM_MODEL)
+        _model, _processor, _device = model, processor, device
+
+    return _model, _processor, _device
 
 
 def ask_vlm(image_paths: list[str], question: str) -> str:
-    torch.cuda.empty_cache()
+    model, processor, device = _load()
 
-    content = [{"type": "image", "image": path} for path in image_paths]
+    if device.startswith("cuda"):
+        torch.cuda.empty_cache()
+
+    content = [{"type": "image", "image": str(path)} for path in image_paths]
     content.append({"type": "text", "text": question})
 
     messages = [{"role": "user", "content": content}]
@@ -58,11 +76,9 @@ def describe_scene(image_paths: list[str]) -> str:
 
 
 if __name__ == "__main__":
-    from keyframes import extract_keyframes
+    from perception.keyframes import extract_keyframes
 
-    paths = extract_keyframes(
-        "../test_video.mp4" if os.getcwd().endswith("reasoning") else "test_video.mp4"
-    )
+    paths = extract_keyframes(config.VIDEO_PATH)
 
     print("SCENE DESCRIPTION:")
     print(describe_scene(paths))

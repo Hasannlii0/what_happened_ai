@@ -6,16 +6,18 @@ services:
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
+    # Live code reload, and uploads must outlive the container
+    # (.dockerignore excludes *.mp4, so the image ships no test video).
     volumes:
       - .:/app
+      - /app/.venv
       - huggingface-cache:/root/.cache/huggingface
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/openapi.json')"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 60s
 
   ui:
     build:
@@ -25,11 +27,13 @@ services:
     ports:
       - "8501:8501"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     environment:
       - API_URL=http://api:8000
     volumes:
       - .:/app
+      - /app/.venv
 
 volumes:
   huggingface-cache:

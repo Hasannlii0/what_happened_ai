@@ -1,7 +1,12 @@
-FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
+FROM python:3.10-slim
+
+# CUDA is not in the base image: the cu* torch wheels ship their own CUDA
+# runtime, so a GPU host only needs the nvidia container runtime.
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
+
+ENV PYTHONUNBUFFERED=1
 
 RUN apt-get update && apt-get install -y \
-    python3.10 python3-pip \
     ffmpeg \
     libgl1 \
     libglib2.0-0 \
@@ -10,7 +15,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 COPY requirements-api.txt .
-RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu121
+RUN pip install --no-cache-dir "torch<3" torchvision --index-url ${TORCH_INDEX_URL}
 RUN pip install --no-cache-dir -r requirements-api.txt
 
 COPY . .

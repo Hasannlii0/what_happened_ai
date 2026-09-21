@@ -24,6 +24,11 @@ def summarize(event_log: EventLog) -> str:
         elif e.event == "approach":
             target = e.location or e.object or "something"
             lines.append(f"{e.subject} approached {target} at {e.t:.1f}s.")
+        else:
+            lines.append(f"{e.subject} {e.event} at {e.t:.1f}s.")
+
+    if not lines:
+        return "No people or objects were detected in this clip."
 
     return " ".join(lines)
 
@@ -33,9 +38,10 @@ if __name__ == "__main__":
 
     from event_extractor import extract_events
 
+    import config
     from schema import DetectionLog
 
-    with open("reasoning/fake_detections.json") as f:
+    with open(config.REPO_ROOT / "reasoning" / "fake_detections.json") as f:
         data = json.load(f)
 
     detection_log = DetectionLog(**data)

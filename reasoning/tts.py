@@ -1,14 +1,16 @@
 import os
-import uuid
+import sys
+from pathlib import Path
 
 from gtts import gTTS
 
-OUTPUT_DIR = "reasoning/tts_output"
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import config
 
 
-def synthesize_speech(text: str) -> str:
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    filename = f"{OUTPUT_DIR}/{uuid.uuid4().hex}.mp3"
-    tts = gTTS(text=text, lang="en")
-    tts.save(filename)
-    return filename
+def synthesize_speech(text: str) -> Path:
+    config.TTS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    output_path = config.TTS_OUTPUT_DIR / "latest.mp3"
+    gTTS(text=text, lang="en").save(str(output_path))
+    return output_path
