@@ -27,7 +27,9 @@ IOU_THRESHOLD = float(os.environ.get("WH_IOU_THRESHOLD", "0.5"))
 MLFLOW_EXPERIMENT = os.environ.get("WH_MLFLOW_EXPERIMENT", "what_happened_ai")
 
 KEYFRAME_COUNT = int(os.environ.get("WH_KEYFRAME_COUNT", "3"))
-KEYFRAME_RESIZE_WIDTH = int(os.environ.get("WH_KEYFRAME_RESIZE_WIDTH", "512"))
+# Qwen2-VL turns a frame into roughly (w/28)*(h/28) tokens, and encoding those
+# dominates CPU inference, so width trades directly against latency.
+KEYFRAME_RESIZE_WIDTH = int(os.environ.get("WH_KEYFRAME_RESIZE_WIDTH", "336"))
 
 VLM_MODEL = os.environ.get("WH_VLM_MODEL", "Qwen/Qwen2-VL-2B-Instruct")
 VLM_DEVICE = os.environ.get("WH_VLM_DEVICE", "")
