@@ -55,21 +55,34 @@ def closest_person_at_frame(person_detections, bbox):
     return closest_person, closest_dist
 
 
-def extract_events(detection_log: DetectionLog, proximity_ratio=None) -> EventLog:
+def extract_events(
+    detection_log: DetectionLog, proximity_ratio=None, min_track_seconds=None
+) -> EventLog:
     """proximity_ratio: fraction of the frame diagonal treated as "close enough"
-    for a person/object interaction, so behavior holds across resolutions."""
+    for a person/object interaction, so behavior holds across resolutions.
+
+    min_track_seconds: how long a track must survive to count as real.
+    """
     if proximity_ratio is None:
         proximity_ratio = config.PROXIMITY_RATIO
+    if min_track_seconds is None:
+        min_track_seconds = config.MIN_TRACK_SECONDS
 
     tracks = group_by_track(detection_log.detections)
+
+    # A detector firing once at a reflection or a sign invents a track, and it
+    # arrives with respectable confidence, so confidence cannot filter it out.
+    # How long it survives can: real subjects persist, phantoms do not.
+    tracks = {
+        tid: ds
+        for tid, ds in tracks.items()
+        if ds[-1].timestamp - ds[0].timestamp >= min_track_seconds
+    }
+
     class_names = {tid: track_class_name(ds) for tid, ds in tracks.items()}
 
     persons = {tid: ds for tid, ds in tracks.items() if class_names[tid] == "person"}
-    objects = {
-        tid: ds
-        for tid, ds in tracks.items()
-        if class_names[tid] != "person" and ds[0].frame != ds[-1].frame
-    }
+    objects = {tid: ds for tid, ds in tracks.items() if class_names[tid] != "person"}
 
     diagonal = (detection_log.frame_width**2 + detection_log.frame_height**2) ** 0.5
     proximity_threshold = diagonal * proximity_ratio

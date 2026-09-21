@@ -60,6 +60,7 @@ def test_default_tunables_match_the_historical_literals(monkeypatch):
     assert cfg.STT_DEVICE == "cpu"
     assert cfg.STT_COMPUTE_TYPE == "int8"
     assert cfg.PROXIMITY_RATIO == 0.12
+    assert cfg.MIN_TRACK_SECONDS == 0.4
     assert cfg.MAX_UPLOAD_BYTES == 500 * 1024 * 1024
     assert cfg.DETECT_TIMEOUT_SEC == 600
     assert cfg.API_URL == "http://localhost:8000"

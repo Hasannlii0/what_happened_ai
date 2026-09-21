@@ -60,6 +60,38 @@ def test_single_frame_object_produces_no_interaction_events():
     assert kinds(log) == ["enter", "exit"]
 
 
+def test_a_high_confidence_flicker_is_still_discarded():
+    """A false positive arrives with respectable confidence, so only its
+    lifetime distinguishes it from a real subject."""
+    detections = [det(f, 1, "person", PERSON_BBOX) for f in (0, 30, 60, 90)]
+    detections += [det(f, 9, "traffic light", FAR_BBOX, confidence=0.62) for f in (40, 42)]
+
+    log = extract_events(make_log(detections))
+
+    assert "Trafficlight_9" not in [e.object for e in log.events]
+    assert kinds(log) == ["enter", "exit"]
+
+
+def test_a_brief_person_track_produces_no_enter_or_exit():
+    detections = [det(f, 1, "person", PERSON_BBOX) for f in (0, 30, 60, 90)]
+    detections += [det(f, 7, "person", FAR_BBOX) for f in (50, 52)]
+
+    log = extract_events(make_log(detections))
+
+    assert [e.subject for e in log.events] == ["Person_1", "Person_1"]
+
+
+def test_min_track_seconds_is_tunable():
+    detections = [det(f, 1, "person", PERSON_BBOX) for f in (0, 30, 60, 90)]
+    detections += [det(f, 7, "person", FAR_BBOX) for f in (50, 56)]
+
+    strict = extract_events(make_log(detections), min_track_seconds=1.0)
+    lenient = extract_events(make_log(detections), min_track_seconds=0.1)
+
+    assert "Person_7" not in [e.subject for e in strict.events]
+    assert "Person_7" in [e.subject for e in lenient.events]
+
+
 def test_object_present_from_first_frame_is_not_placed_or_picked_up():
     frames = (0, 30, 60, 90)
     detections = [det(f, 1, "person", PERSON_BBOX) for f in frames]
@@ -74,10 +106,11 @@ def test_object_present_from_first_frame_is_not_placed_or_picked_up():
 def test_approach_fires_once_per_rising_edge_not_once_per_frame():
     far = [0.0, 0.0, 100.0, 100.0]
     near = [450.0, 350.0, 550.0, 450.0]
-    detections = [det(f, 1, "person", far) for f in (0, 1, 2)]
-    detections += [det(f, 1, "person", near) for f in (3, 4, 5)]
+    detections = [det(f, 1, "person", far) for f in (0, 6, 12)]
+    detections += [det(f, 1, "person", near) for f in (18, 24, 30)]
     detections += [
-        det(f, 2, "chair", [480.0, 380.0, 520.0, 420.0]) for f in (0, 1, 2, 3, 4, 5)
+        det(f, 2, "chair", [480.0, 380.0, 520.0, 420.0])
+        for f in (0, 6, 12, 18, 24, 30)
     ]
 
     log = extract_events(make_log(detections))
@@ -86,22 +119,23 @@ def test_approach_fires_once_per_rising_edge_not_once_per_frame():
     assert len(approaches) == 1
     assert approaches[0].subject == "Person_1"
     assert approaches[0].object == "Chair_2"
-    assert approaches[0].t == pytest.approx(3 / 30)
+    assert approaches[0].t == pytest.approx(18 / 30)
 
 
 def test_approach_fires_again_after_the_person_moves_away_and_returns():
     far = [0.0, 0.0, 100.0, 100.0]
     near = [450.0, 350.0, 550.0, 450.0]
-    positions = {0: far, 1: far, 2: far, 3: near, 4: far, 5: near}
+    positions = {0: far, 6: far, 12: far, 18: near, 24: far, 30: near}
     detections = [det(f, 1, "person", b) for f, b in positions.items()]
     detections += [
-        det(f, 2, "chair", [480.0, 380.0, 520.0, 420.0]) for f in (0, 1, 2, 3, 4, 5)
+        det(f, 2, "chair", [480.0, 380.0, 520.0, 420.0])
+        for f in (0, 6, 12, 18, 24, 30)
     ]
 
     log = extract_events(make_log(detections))
     approaches = [e for e in log.events if e.event == "approach"]
 
-    assert [e.t for e in approaches] == pytest.approx([3 / 30, 5 / 30])
+    assert [e.t for e in approaches] == pytest.approx([18 / 30, 30 / 30])
 
 
 def test_placement_does_not_also_emit_an_approach_for_the_same_moment():

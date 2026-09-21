@@ -38,6 +38,7 @@ STT_DEVICE = os.environ.get("WH_STT_DEVICE", "cpu")
 STT_COMPUTE_TYPE = os.environ.get("WH_STT_COMPUTE_TYPE", "int8")
 
 PROXIMITY_RATIO = float(os.environ.get("WH_PROXIMITY_RATIO", "0.12"))
+MIN_TRACK_SECONDS = float(os.environ.get("WH_MIN_TRACK_SECONDS", "0.4"))
 
 MAX_UPLOAD_BYTES = int(os.environ.get("WH_MAX_UPLOAD_BYTES", str(500 * 1024 * 1024)))
 DETECT_TIMEOUT_SEC = int(os.environ.get("WH_DETECT_TIMEOUT_SEC", "600"))
