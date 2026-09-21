@@ -55,6 +55,7 @@ def test_default_tunables_match_the_historical_literals(monkeypatch):
     assert cfg.KEYFRAME_RESIZE_WIDTH == 512
     assert cfg.VLM_MODEL == "Qwen/Qwen2-VL-2B-Instruct"
     assert cfg.VLM_DEVICE == ""
+    assert cfg.VLM_DTYPE == ""
     assert cfg.STT_MODEL == "base"
     assert cfg.STT_DEVICE == "cpu"
     assert cfg.STT_COMPUTE_TYPE == "int8"

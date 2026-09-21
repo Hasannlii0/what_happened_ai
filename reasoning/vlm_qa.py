@@ -21,7 +21,14 @@ def _load():
 
     if _model is None:
         device = config.VLM_DEVICE or ("cuda" if torch.cuda.is_available() else "cpu")
-        dtype = torch.float16 if device.startswith("cuda") else torch.float32
+        # float32 weights for a 2B model are ~8GB, which does not fit a default
+        # Docker memory budget. bfloat16 halves that and keeps float32's exponent
+        # range, so it does not overflow the way float16 does on CPU.
+        dtype = (
+            getattr(torch, config.VLM_DTYPE)
+            if config.VLM_DTYPE
+            else (torch.float16 if device.startswith("cuda") else torch.bfloat16)
+        )
         model = Qwen2VLForConditionalGeneration.from_pretrained(
             config.VLM_MODEL, torch_dtype=dtype, device_map=device
         )

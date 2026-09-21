@@ -31,6 +31,7 @@ KEYFRAME_RESIZE_WIDTH = int(os.environ.get("WH_KEYFRAME_RESIZE_WIDTH", "512"))
 
 VLM_MODEL = os.environ.get("WH_VLM_MODEL", "Qwen/Qwen2-VL-2B-Instruct")
 VLM_DEVICE = os.environ.get("WH_VLM_DEVICE", "")
+VLM_DTYPE = os.environ.get("WH_VLM_DTYPE", "")
 STT_MODEL = os.environ.get("WH_STT_MODEL", "base")
 STT_DEVICE = os.environ.get("WH_STT_DEVICE", "cpu")
 STT_COMPUTE_TYPE = os.environ.get("WH_STT_COMPUTE_TYPE", "int8")
