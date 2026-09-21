@@ -3,7 +3,9 @@ services:
     image: what-happened-ai-api-gpu
     build:
       args:
-        TORCH_INDEX_URL: https://download.pytorch.org/whl/cu121
+        # cu126 carries the same torch the cpu index does; cu121 stopped at
+        # 2.5.1, which left the GPU path ten minor versions behind the CPU one.
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/cu126
     deploy:
       resources:
         reservations:

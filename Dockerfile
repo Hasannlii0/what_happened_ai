@@ -15,7 +15,14 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 COPY requirements-api.txt .
-RUN pip install --no-cache-dir "torch<3" torchvision --index-url ${TORCH_INDEX_URL}
+# --index-url REPLACES PyPI, and the torch index carries only torch and its
+# runtime deps, so a source dep there (typing_extensions) cannot find its build
+# backend and the install dies. PyPI is kept as a fallback for those. The torch
+# index stays primary and its wheels carry a +cpu/+cu local version, which
+# outranks PyPI's plain build, so the intended variant still wins.
+RUN pip install --no-cache-dir "torch<3" torchvision \
+    --index-url ${TORCH_INDEX_URL} \
+    --extra-index-url https://pypi.org/simple
 RUN pip install --no-cache-dir -r requirements-api.txt
 
 COPY . .
