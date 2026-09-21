@@ -14,6 +14,12 @@ API_URL = config.API_URL
 MODEL_TIMEOUT = 900
 API_TIMEOUT = 120
 
+# Colour encodes which track an event belongs to, so the same subject keeps one
+# hue in the timeline and the log. Chosen at similar lightness so no track reads
+# as more important than another.
+TRACK_COLORS = ["#58A6E8", "#5FC98C", "#C08BE8", "#E8A0C8", "#7FD6C0", "#9DA8F0"]
+OBJECT_COLOR = "#F5A524"
+
 
 def call_api(method, path, timeout, **kwargs):
     try:
@@ -43,22 +49,41 @@ def play_speech(text):
         st.error(api_error(res, "Could not generate audio."))
 
 
-st.set_page_config(page_title="What Happened Here?", layout="wide")
+def track_colors(events):
+    registry = {}
+    for e in events:
+        subject = e["subject"]
+        if subject not in registry:
+            registry[subject] = TRACK_COLORS[len(registry) % len(TRACK_COLORS)]
+    return registry
+
+
+def timecode(seconds):
+    return f"{int(seconds) // 60:02d}:{seconds % 60:04.1f}"
+
+
+st.set_page_config(page_title="What Happened Here", layout="wide")
 
 st.markdown(
     """
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
 
 <style>
 :root {
-    --bg: #0B0C0E;
-    --panel: #14161A;
-    --panel-alt: #191C21;
-    --border: #2A2E35;
-    --text: #E9E6DF;
-    --text-dim: #8B8F97;
-    --accent: #FFB020;
-    --accent-dim: #6B4E1C;
+    --bg: #0B0D10;
+    --chrome: #0E1115;
+    --panel: #14171B;
+    --raised: #1A1E23;
+    --line: #272C33;
+    --line-2: #353B44;
+    --text: #ECEAE5;
+    --text-2: #A6ACB6;
+    --text-3: #858C96;
+    --text-4: #6E747E;
+    --accent: #F5A524;
+    --accent-edge: #5A4312;
+    --danger: #E8746A;
+    --ok: #5FC98C;
 }
 
 .stApp {
@@ -67,124 +92,257 @@ st.markdown(
     font-family: 'IBM Plex Sans', sans-serif;
 }
 
-h1, h2, h3 {
-    font-family: 'Space Grotesk', sans-serif !important;
-    color: var(--text) !important;
-    font-weight: 600 !important;
-    letter-spacing: -0.01em;
-}
+.block-container { padding-top: 2.2rem; padding-bottom: 3rem; max-width: 1480px; }
 
-p, span, label, div {
-    font-family: 'IBM Plex Sans', sans-serif;
-}
+[data-testid="stHeader"] { background: transparent; }
+[data-testid="stToolbar"] { right: 8px; }
 
-.observer-header {
+h1, h2, h3, p, span, label, div { font-family: 'IBM Plex Sans', sans-serif; }
+
+.mono { font-family: 'IBM Plex Mono', monospace; }
+
+/* ---------- top bar ---------- */
+
+.topbar {
     display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 16px;
-    margin-bottom: 28px;
+    align-items: center;
+    gap: 18px;
+    background: var(--chrome);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 0 18px;
+    height: 56px;
+    margin-bottom: 22px;
 }
 
-.observer-header h1 {
-    font-size: 1.6rem;
-    margin: 0;
-}
-
-.status-pill {
+.mark {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.8rem;
-    color: var(--accent);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    color: var(--text);
 }
 
-.status-pill::before {
-    content: "●";
-    margin-right: 6px;
+.mark-dot {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 1.5px solid var(--accent);
+    border-radius: 3px;
+    margin-right: 10px;
+    vertical-align: -3px;
+    position: relative;
 }
+.mark-dot::after {
+    content: "";
+    position: absolute;
+    inset: 4px;
+    background: var(--accent);
+    border-radius: 1px;
+}
+
+.rule { width: 1px; height: 20px; background: var(--line); }
+
+.status {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    display: flex; align-items: center; gap: 8px;
+}
+.status .led { width: 6px; height: 6px; border-radius: 50%; }
+
+.meta {
+    flex-grow: 1;
+    display: flex; align-items: center; gap: 12px; justify-content: flex-end;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-3);
+}
+.meta .sep { color: var(--line-2); }
+.meta .name { color: var(--text); font-size: 12px; }
+
+/* ---------- panels ---------- */
 
 .panel {
-    background-color: var(--panel);
-    border: 1px solid var(--border);
-    padding: 20px 22px;
-    margin-bottom: 20px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 18px 20px;
+    margin-bottom: 18px;
 }
 
-.panel-title {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 1rem;
-    font-weight: 600;
-    margin-bottom: 12px;
-    color: var(--text);
+.section {
+    display: flex; align-items: baseline; gap: 10px;
+    margin: 4px 0 10px 0;
 }
-
-.monitor-frame {
-    border: 1px solid var(--accent-dim);
-    padding: 6px;
-    background-color: #000;
+.section h2 {
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: var(--text) !important;
+    margin: 0 !important;
+    letter-spacing: 0 !important;
 }
-
-.timecode-entry {
+.section .count {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.85rem;
-    color: var(--text);
-    padding: 7px 0;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    gap: 14px;
+    font-size: 11px;
+    color: var(--text-4);
 }
 
-.timecode-entry .t {
-    color: var(--accent);
-    min-width: 64px;
-}
-
-.console-response {
+.eyebrow {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.9rem;
-    color: var(--text);
-    background-color: var(--panel-alt);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--text-3);
+}
+
+.badge {
+    height: 20px; padding: 0 8px;
+    border-radius: 3px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    display: inline-flex; align-items: center;
+}
+.badge-vlm { background: rgba(88,166,232,0.12); border: 1px solid rgba(88,166,232,0.40); color: #58A6E8; }
+.badge-tpl { background: rgba(232,116,106,0.12); border: 1px solid rgba(232,116,106,0.40); color: var(--danger); }
+
+/* ---------- field report ---------- */
+
+.report {
+    font-family: 'Newsreader', Georgia, serif;
+    font-size: 16.5px;
+    line-height: 1.62;
+    color: #E4E1DB;
+    margin: 12px 0 0 0;
+}
+
+/* ---------- timeline ---------- */
+
+.timeline { position: relative; height: 30px; margin: 2px 0 6px 0; }
+.timeline .track {
+    position: absolute; left: 0; right: 0; top: 12px;
+    height: 5px; background: var(--line); border-radius: 3px;
+}
+.timeline .tick {
+    position: absolute; top: 6px;
+    width: 2px; height: 18px; border-radius: 1px;
+}
+.timeline-scale {
+    display: flex; justify-content: space-between;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px; color: var(--text-4);
+}
+
+/* ---------- event log ---------- */
+
+.log-head, .log-row {
+    display: grid;
+    grid-template-columns: 86px 1.1fr 0.9fr 1.3fr;
+    align-items: center;
+    gap: 12px;
+    padding: 0 14px;
+}
+.log-head {
+    height: 30px;
+    background: var(--raised);
+    border-bottom: 1px solid var(--line);
+}
+.log-head span {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px; letter-spacing: 0.1em; color: var(--text-3);
+}
+.log-row { height: 32px; border-bottom: 1px solid #1E2227; }
+.log-row:last-child { border-bottom: none; }
+.log-row .t { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--accent); }
+.log-row .subject { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text); }
+.log-row .chip { width: 7px; height: 7px; border-radius: 2px; flex-shrink: 0; }
+.log-row .action { font-size: 12.5px; color: var(--text-2); }
+.log-row .object { font-size: 12.5px; color: var(--text); }
+.log-wrap { border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: var(--panel); }
+
+/* ---------- answer ---------- */
+
+.answer {
     border-left: 2px solid var(--accent);
-    padding: 12px 16px;
+    background: var(--raised);
+    border-radius: 0 4px 4px 0;
+    padding: 11px 14px;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: #E4E1DB;
     margin-top: 10px;
 }
+.heard {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-2);
+    background: var(--raised);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 9px 12px;
+    margin-top: 8px;
+}
 
-.console-response::before {
-    content: "> ";
-    color: var(--accent);
+/* ---------- empty state ---------- */
+
+.empty-title {
+    font-size: 30px; font-weight: 600; letter-spacing: -0.02em;
+    color: var(--text); margin: 10px 0 8px 0;
+}
+.empty-sub { font-size: 14.5px; line-height: 1.6; color: var(--text-2); max-width: 620px; margin: 0; }
+.steps { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 20px; margin-top: 8px; }
+.step { border-top: 1px solid var(--line); padding-top: 12px; }
+.step .n { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--accent); }
+.step .h { font-size: 13px; font-weight: 600; color: var(--text); margin: 7px 0 5px 0; }
+.step .b { font-size: 12.5px; line-height: 1.5; color: var(--text-3); }
+
+/* ---------- streamlit widgets ---------- */
+
+[data-testid="stVideo"] video {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: #000;
 }
 
 [data-testid="stFileUploader"] {
-    background-color: var(--panel);
-    border: 1px dashed var(--border);
+    background: var(--panel);
+    border: 1px dashed var(--line-2);
+    border-radius: 6px;
+    padding: 10px 14px;
 }
+[data-testid="stFileUploader"] section { background: transparent; }
 
 .stButton > button {
-    background-color: transparent;
-    color: var(--accent);
-    border: 1px solid var(--accent-dim);
-    border-radius: 2px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.85rem;
-    padding: 6px 18px;
+    height: 44px;
+    border-radius: 4px;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+    background: transparent;
+    color: var(--text-2);
+    border: 1px solid var(--line-2);
 }
+.stButton > button:hover { border-color: var(--text-3); color: var(--text); background: var(--raised); }
 
-.stButton > button:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-    background-color: var(--panel-alt);
+.stButton > button[kind="primary"] {
+    background: var(--accent);
+    color: #1A1003;
+    border: 1px solid var(--accent);
+    font-weight: 600;
 }
+.stButton > button[kind="primary"]:hover { background: #FFBB43; color: #1A1003; }
 
 .stTextInput input {
-    background-color: var(--panel);
+    background: var(--chrome);
     color: var(--text);
-    border: 1px solid var(--border);
+    border: 1px solid var(--line-2);
+    border-radius: 4px;
     font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    height: 44px;
 }
+.stTextInput input::placeholder { color: var(--text-4); }
 
-hr {
-    border-color: var(--border) !important;
-}
+[data-testid="stCaptionContainer"] { color: var(--text-3) !important; }
+
+hr { border-color: var(--line) !important; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -196,26 +354,45 @@ if "result" not in st.session_state:
 header = st.empty()
 
 
-def render_header(status):
+def render_header(status, result=None):
+    led, tone = {
+        "ready": ("#4A5058", "var(--text-3)"),
+        "analyzing": ("var(--accent)", "var(--accent)"),
+        "complete": ("var(--ok)", "var(--text-2)"),
+    }[status]
+
+    meta = ""
+    if result:
+        events = result.get("events", [])
+        span = max((e["t"] for e in events), default=0.0)
+        meta = (
+            f'<span class="name">{html.escape(str(result.get("video_id", "")))}</span>'
+            f'<span class="sep">/</span><span>{len(events)} events</span>'
+            f'<span class="sep">/</span><span>{span:.1f}s span</span>'
+        )
+
     header.markdown(
         f"""
-<div class="observer-header">
-    <h1>What happened here</h1>
-    <span class="status-pill">{status}</span>
+<div class="topbar">
+  <span class="mark"><span class="mark-dot"></span>WHAT HAPPENED HERE</span>
+  <span class="rule"></span>
+  <span class="status" style="color:{tone}"><span class="led" style="background:{led}"></span>{status}</span>
+  <span class="meta">{meta}</span>
 </div>
 """,
         unsafe_allow_html=True,
     )
 
 
-render_header("ready")
+render_header("complete" if st.session_state.result else "ready", st.session_state.result)
 
-st.markdown('<div class="panel-title">Upload a recording</div>', unsafe_allow_html=True)
-uploaded_file = st.file_uploader(" ", type=["mp4"], label_visibility="collapsed")
+uploaded_file = st.file_uploader(
+    "Upload a recording", type=["mp4"], label_visibility="collapsed"
+)
 
-col_upload, col_analyze = st.columns([1, 1])
+col_upload, col_analyze, _ = st.columns([1, 1, 5])
 with col_upload:
-    if uploaded_file is not None and st.button("Upload"):
+    if st.button("Upload", disabled=uploaded_file is None):
         st.session_state.result = None
         res, err = call_api(
             "post",
@@ -233,27 +410,53 @@ with col_upload:
             st.error(api_error(res, "Upload failed"))
 
 with col_analyze:
-    if st.button("Analyze"):
+    if st.button("Analyze", type="primary"):
         render_header("analyzing")
         with st.spinner("Watching the recording..."):
             res, err = call_api("post", "/analyze", MODEL_TIMEOUT)
-        render_header("ready")
         if err:
             st.error(err)
         elif res.status_code == 200:
             st.session_state.result = res.json()
         else:
             st.error(api_error(res, "Analysis failed"))
+        render_header(
+            "complete" if st.session_state.result else "ready", st.session_state.result
+        )
 
-if st.session_state.result:
+if not st.session_state.result:
+    st.markdown(
+        """
+<div class="panel" style="padding: 28px 30px;">
+  <span class="eyebrow">INTAKE</span>
+  <div class="empty-title">Upload footage to begin</div>
+  <p class="empty-sub">A short clip works best. Everything runs on this machine &mdash; the video is not sent anywhere, and each new upload replaces the last one.</p>
+  <div class="steps">
+    <div class="step"><div class="n">01</div><div class="h">Detect &amp; track</div><div class="b">YOLOv8n finds people and objects; BoT-SORT keeps an identity on each one across frames.</div></div>
+    <div class="step"><div class="n">02</div><div class="h">Extract events</div><div class="b">Track lifetimes and proximity become enter, exit, place, pick up and approach.</div></div>
+    <div class="step"><div class="n">03</div><div class="h">Describe</div><div class="b">Keyframes go to Qwen2-VL, which writes the report in plain language.</div></div>
+    <div class="step"><div class="n">04</div><div class="h">Ask</div><div class="b">Question the footage by text or voice and hear the answer read back.</div></div>
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+else:
     result = st.session_state.result
+    events = result.get("events", [])
+    colors = track_colors(events)
+    span = max((e["t"] for e in events), default=0.0)
 
-    col1, col2 = st.columns([2, 1])
+    col1, col2 = st.columns([2, 1], gap="medium")
 
     with col1:
-        st.markdown('<div class="panel-title">Monitor</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="section"><h2>Monitor</h2>'
+            '<span class="count">yolov8n + botsort</span></div>',
+            unsafe_allow_html=True,
+        )
         if result.get("annotated_video_path"):
-            st.markdown('<div class="monitor-frame">', unsafe_allow_html=True)
             video_res, video_err = call_api("get", "/annotated_video", API_TIMEOUT)
             if video_err:
                 st.error(video_err)
@@ -261,50 +464,101 @@ if st.session_state.result:
                 st.video(video_res.content)
             else:
                 st.error(api_error(video_res, "Could not load the annotated video."))
-            st.markdown("</div>", unsafe_allow_html=True)
         else:
             st.markdown(
-                '<div class="panel">No footage processed yet.</div>',
+                '<div class="panel" style="color: var(--text-3); font-size: 13px;">'
+                "No annotated video was produced for this clip.</div>",
+                unsafe_allow_html=True,
+            )
+
+        if span > 0:
+            ticks = "".join(
+                f'<div class="tick" style="left: calc({e["t"] / span * 100:.2f}% - 1px);'
+                f' background: {colors[e["subject"]]};"></div>'
+                for e in events
+            )
+            st.markdown(
+                f"""
+<div class="timeline"><div class="track"></div>{ticks}</div>
+<div class="timeline-scale"><span>00:00.0</span><span>each mark is an event, coloured by subject</span><span>{timecode(span)}</span></div>
+""",
                 unsafe_allow_html=True,
             )
 
     with col2:
+        is_template = result.get("summary_source") == "template"
+        badge = (
+            '<span class="badge badge-tpl">template fallback</span>'
+            if is_template
+            else '<span class="badge badge-vlm">Qwen2-VL</span>'
+        )
         st.markdown(
             f"""
-        <div class="panel">
-            <div class="panel-title">Field report</div>
-            <p style="color: var(--text); line-height: 1.5;">{html.escape(result['summary'])}</p>
-        </div>
-        """,
+<div class="panel">
+  <div style="display:flex; align-items:center; gap:10px;">
+    <span style="font-size:13px; font-weight:600; color:var(--text);">Field report</span>
+    <span style="flex-grow:1;"></span>{badge}
+  </div>
+  <p class="report">{html.escape(result["summary"])}</p>
+</div>
+""",
             unsafe_allow_html=True,
         )
 
-        if result.get("summary_source") == "template":
+        if is_template:
             st.caption(
-                "Scene description unavailable - this is a rule-based summary of the detected events."
+                "The vision model did not answer, so this is a rule-based summary "
+                "of the detected events rather than a description of the footage."
             )
 
         if st.button("Hear report"):
             with st.spinner("Generating voice..."):
                 play_speech(result["summary"])
 
-    st.markdown('<div class="panel-title">Event log</div>', unsafe_allow_html=True)
-    log_html = '<div class="panel">'
-    for e in result["events"]:
-        obj_part = f" {e['object']}" if e.get("object") else ""
-        log_html += f'<div class="timecode-entry"><span class="t">{e["t"]:05.1f}s</span><span>{e["subject"]} {e["event"]}{obj_part}</span></div>'
-    log_html += "</div>"
-    st.markdown(log_html, unsafe_allow_html=True)
-
     st.markdown(
-        '<div class="panel-title">Ask the observer</div>', unsafe_allow_html=True
+        f'<div class="section"><h2>Event log</h2>'
+        f'<span class="count">{len(events)} events</span></div>',
+        unsafe_allow_html=True,
     )
 
-    col_a, col_b = st.columns([3, 1])
+    if events:
+        rows = "".join(
+            f'<div class="log-row">'
+            f'<span class="t">{timecode(e["t"])}</span>'
+            f'<span class="subject"><span class="chip" style="background:{colors[e["subject"]]}"></span>'
+            f'{html.escape(str(e["subject"]))}</span>'
+            f'<span class="action">{html.escape(str(e["event"]))}</span>'
+            f'<span class="object">{html.escape(str(e.get("object") or "—"))}</span>'
+            f"</div>"
+            for e in events
+        )
+        st.markdown(
+            f"""
+<div class="log-wrap">
+  <div class="log-head"><span>TIME</span><span>SUBJECT</span><span>ACTION</span><span>OBJECT</span></div>
+  {rows}
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<div class="panel" style="color: var(--text-3); font-size: 13px;">'
+            "No people or objects were tracked in this clip.</div>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        '<div class="section" style="margin-top:22px;"><h2>Ask the observer</h2>'
+        '<span class="count">text or voice</span></div>',
+        unsafe_allow_html=True,
+    )
+
+    col_a, col_b = st.columns([4, 1], gap="small")
     with col_a:
         question = st.text_input(
-            " ",
-            placeholder="Did anyone leave an object?",
+            "Question",
+            placeholder="Did anyone leave an object behind?",
             label_visibility="collapsed",
             key="question_input",
         )
@@ -324,13 +578,13 @@ if st.session_state.result:
         elif res.status_code == 200:
             question = res.json()["text"]
             st.markdown(
-                f'<div class="console-response">heard: {html.escape(question)}</div>',
+                f'<div class="heard">heard: {html.escape(question)}</div>',
                 unsafe_allow_html=True,
             )
         else:
             st.error(api_error(res, "Could not transcribe the recording."))
 
-    if st.button("Ask", key="ask_button") and question:
+    if st.button("Ask", type="primary", key="ask_button") and question:
         with st.spinner("Thinking..."):
             res, err = call_api(
                 "post", "/ask", MODEL_TIMEOUT, params={"question": question}
@@ -340,7 +594,7 @@ if st.session_state.result:
         elif res.status_code == 200:
             answer = res.json()["answer"]
             st.markdown(
-                f'<div class="console-response">{html.escape(answer)}</div>',
+                f'<div class="answer">{html.escape(answer)}</div>',
                 unsafe_allow_html=True,
             )
             play_speech(answer)

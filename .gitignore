@@ -9,6 +9,7 @@ perception/detections.json
 perception/keyframes/
 .env
 reasoning/tts_output/
+.streamlit/secrets.toml
 mlflow.db
 .pytest_cache/
 .ruff_cache/
