@@ -1,5 +1,4 @@
 from pydantic import BaseModel
-from typing import Optional, List
 
 
 class Detection(BaseModel):
@@ -7,33 +6,33 @@ class Detection(BaseModel):
     timestamp: float
     track_id: int
     class_name: str
-    bbox: List[float]
+    bbox: list[float]
     confidence: float
 
 
 class DetectionLog(BaseModel):
     video_id: str
     fps: float
-    frame_width: Optional[int] = None
-    frame_height: Optional[int] = None
-    detections: List[Detection]
+    frame_width: int | None = None
+    frame_height: int | None = None
+    detections: list[Detection]
 
 
 class Event(BaseModel):
     t: float
     event: str
     subject: str
-    object: Optional[str] = None
-    location: Optional[str] = None
+    object: str | None = None
+    location: str | None = None
 
 
 class EventLog(BaseModel):
     video_id: str
-    events: List[Event]
+    events: list[Event]
 
 
 class AnalysisResult(BaseModel):
     video_id: str
-    events: List[Event]
+    events: list[Event]
     summary: str
-    annotated_video_path: Optional[str] = None
+    annotated_video_path: str | None = None

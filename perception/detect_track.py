@@ -1,9 +1,8 @@
-import json
-import sys 
-import os 
-import shutil
 import glob
+import os
 import subprocess
+import sys
+
 import cv2
 import mlflow
 from ultralytics import YOLO
@@ -46,7 +45,7 @@ def run():
             tracker=TRACKER,
             save=True,
             conf=CONF_THRESHOLD,
-            iou=IOU_THRESHOLD
+            iou=IOU_THRESHOLD,
         )
 
         detections = []
@@ -55,23 +54,23 @@ def run():
         for frame_idx, r in enumerate(results):
             if r.boxes.id is None:
                 continue
-            for box, track_id, cls, conf in zip(r.boxes.xyxy, r.boxes.id, r.boxes.cls, r.boxes.conf):
+            for box, track_id, cls, conf in zip(
+                r.boxes.xyxy, r.boxes.id, r.boxes.cls, r.boxes.conf
+            ):
                 tid = int(track_id)
                 unique_track_ids.add(tid)
-                detections.append(Detection(
-                    frame=frame_idx,
-                    timestamp=frame_idx / fps,
-                    track_id=tid,
-                    class_name=model.names[int(cls)],
-                    bbox=box.tolist(),
-                    confidence=float(conf)
-                ))
+                detections.append(
+                    Detection(
+                        frame=frame_idx,
+                        timestamp=frame_idx / fps,
+                        track_id=tid,
+                        class_name=model.names[int(cls)],
+                        bbox=box.tolist(),
+                        confidence=float(conf),
+                    )
+                )
 
-        log = DetectionLog(
-            video_id="test_video",
-            fps=fps,
-            detections=detections
-        )
+        log = DetectionLog(video_id="test_video", fps=fps, detections=detections)
 
         with open(OUTPUT_JSON, "w") as f:
             f.write(log.model_dump_json(indent=2))
@@ -85,17 +84,28 @@ def run():
 
         if saved_videos:
             raw_path = saved_videos[0]
-            subprocess.run([
-                "ffmpeg", "-y", "-i", raw_path,
-                "-vcodec", "libx264", "-pix_fmt", "yuv420p",
-                OUTPUT_VIDEO
-            ], check=True)
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    raw_path,
+                    "-vcodec",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    OUTPUT_VIDEO,
+                ],
+                check=True,
+            )
             print(f"Annotated video re-encoded and saved to {OUTPUT_VIDEO}")
             mlflow.log_artifact(OUTPUT_VIDEO)
         else:
             print(f"WARNING: no annotated video found in {save_dir}")
 
-        print(f"Saved {len(detections)} detections ({len(unique_track_ids)} unique tracks) to {OUTPUT_JSON}")
+        print(
+            f"Saved {len(detections)} detections ({len(unique_track_ids)} unique tracks) to {OUTPUT_JSON}"
+        )
 
 
 if __name__ == "__main__":

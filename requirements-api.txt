@@ -10,3 +10,5 @@ torchvision
 qwen-vl-utils
 huggingface_hub
 mlflow
+faster-whisper
+gtts

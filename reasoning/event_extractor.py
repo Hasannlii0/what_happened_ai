@@ -1,6 +1,6 @@
 import json
-import sys
 import os
+import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -59,23 +59,15 @@ def extract_events(detection_log: DetectionLog, proximity_ratio=0.12) -> EventLo
             objects[tid] = ds
 
     if detection_log.frame_width and detection_log.frame_height:
-        diagonal = (detection_log.frame_width ** 2 + detection_log.frame_height ** 2) ** 0.5
+        diagonal = (detection_log.frame_width**2 + detection_log.frame_height**2) ** 0.5
         proximity_threshold = diagonal * proximity_ratio
     else:
         # Fallback for logs without frame dimensions (e.g. older data / tests)
         proximity_threshold = 150
 
     for tid, ds in persons.items():
-        events.append(Event(
-            t=ds[0].timestamp,
-            event="enter",
-            subject=f"Person_{tid}"
-        ))
-        events.append(Event(
-            t=ds[-1].timestamp,
-            event="exit",
-            subject=f"Person_{tid}"
-        ))
+        events.append(Event(t=ds[0].timestamp, event="enter", subject=f"Person_{tid}"))
+        events.append(Event(t=ds[-1].timestamp, event="exit", subject=f"Person_{tid}"))
 
     for otid, ods in objects.items():
         first_seen = ods[0]
@@ -84,25 +76,37 @@ def extract_events(detection_log: DetectionLog, proximity_ratio=0.12) -> EventLo
 
         # "place": object first appears close to a person -> that person
         # likely placed/brought it into frame.
-        placer, place_dist = closest_person_at_frame(persons, first_seen.frame, first_seen.bbox)
+        placer, place_dist = closest_person_at_frame(
+            persons, first_seen.frame, first_seen.bbox
+        )
         if placer is not None and place_dist < proximity_threshold:
-            events.append(Event(
-                t=first_seen.timestamp,
-                event="place",
-                subject=f"Person_{placer}",
-                object=obj_name
-            ))
+            events.append(
+                Event(
+                    t=first_seen.timestamp,
+                    event="place",
+                    subject=f"Person_{placer}",
+                    object=obj_name,
+                )
+            )
 
         # "pick_up": object's track disappears while last seen close to a
         # person -> that person likely picked it up and carried it off.
-        picker, pick_dist = closest_person_at_frame(persons, last_seen.frame, last_seen.bbox)
-        if picker is not None and pick_dist < proximity_threshold and last_seen.frame != first_seen.frame:
-            events.append(Event(
-                t=last_seen.timestamp,
-                event="pick_up",
-                subject=f"Person_{picker}",
-                object=obj_name
-            ))
+        picker, pick_dist = closest_person_at_frame(
+            persons, last_seen.frame, last_seen.bbox
+        )
+        if (
+            picker is not None
+            and pick_dist < proximity_threshold
+            and last_seen.frame != first_seen.frame
+        ):
+            events.append(
+                Event(
+                    t=last_seen.timestamp,
+                    event="pick_up",
+                    subject=f"Person_{picker}",
+                    object=obj_name,
+                )
+            )
 
     # "approach": a person's track comes within the proximity threshold of an
     # object track partway through the video (not just at first appearance).
@@ -115,12 +119,14 @@ def extract_events(detection_log: DetectionLog, proximity_ratio=0.12) -> EventLo
                 for od in ods:
                     if od.frame == pd.frame:
                         if bbox_distance(pd.bbox, od.bbox) < proximity_threshold:
-                            events.append(Event(
-                                t=pd.timestamp,
-                                event="approach",
-                                subject=f"Person_{ptid}",
-                                object=f"{od.class_name.capitalize()}_{otid}"
-                            ))
+                            events.append(
+                                Event(
+                                    t=pd.timestamp,
+                                    event="approach",
+                                    subject=f"Person_{ptid}",
+                                    object=f"{od.class_name.capitalize()}_{otid}",
+                                )
+                            )
                             already_approached.add(otid)
                         break
 

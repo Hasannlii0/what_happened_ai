@@ -1,7 +1,11 @@
-import cv2
 import os
 
-def extract_keyframes(video_path, output_dir="perception/keyframes", num_frames=3, resize_width=512):
+import cv2
+
+
+def extract_keyframes(
+    video_path, output_dir="perception/keyframes", num_frames=3, resize_width=512
+):
     os.makedirs(output_dir, exist_ok=True)
     cap = cv2.VideoCapture(video_path)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -21,6 +25,7 @@ def extract_keyframes(video_path, output_dir="perception/keyframes", num_frames=
 
     cap.release()
     return saved_paths
+
 
 if __name__ == "__main__":
     paths = extract_keyframes("test_video.mp4")

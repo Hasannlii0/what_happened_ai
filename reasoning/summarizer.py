@@ -1,7 +1,5 @@
-
-from pathlib import Path
 import sys
-
+from pathlib import Path
 
 root_dir = str(Path(__file__).resolve().parent.parent)
 
@@ -9,6 +7,7 @@ if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
 from schema import EventLog
+
 
 def summarize(event_log: EventLog) -> str:
     lines = []
@@ -31,7 +30,9 @@ def summarize(event_log: EventLog) -> str:
 
 if __name__ == "__main__":
     import json
+
     from event_extractor import extract_events
+
     from schema import DetectionLog
 
     with open("reasoning/fake_detections.json") as f:
