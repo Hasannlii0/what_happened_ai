@@ -89,6 +89,45 @@ def extract_keyframes(
     return saved_paths
 
 
+def extract_evidence(
+    video_path,
+    timestamps,
+    output_dir=config.EVIDENCE_DIR,
+    width=config.EVIDENCE_WIDTH,
+):
+    """One frame per timestamp, aligned by index; None where a frame could not
+    be read, so a single bad seek does not shift every later event's image."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for stale in output_dir.glob("event_*.jpg"):
+        os.remove(stale)
+
+    cap = cv2.VideoCapture(str(video_path))
+    try:
+        if not cap.isOpened():
+            raise ValueError(f"cannot read video: {video_path}")
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        paths = []
+        for i, t in enumerate(timestamps):
+            path = None
+            if fps > 0 and total_frames > 0 and t >= 0:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, min(int(t * fps), total_frames - 1))
+                ok, frame = cap.read()
+                if ok:
+                    h, w = frame.shape[:2]
+                    frame = cv2.resize(frame, (width, max(int(h * width / w), 1)))
+                    candidate = output_dir / f"event_{i}.jpg"
+                    if cv2.imwrite(str(candidate), frame):
+                        path = str(candidate)
+            paths.append(path)
+    finally:
+        cap.release()
+
+    return paths
+
+
 if __name__ == "__main__":
     paths = extract_keyframes(config.VIDEO_PATH)
     print(f"Saved {len(paths)} keyframes: {paths}")

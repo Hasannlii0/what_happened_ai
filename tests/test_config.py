@@ -29,6 +29,7 @@ DEFAULT_PATHS = {
     "DETECTIONS_JSON": "perception/detections.json",
     "ANNOTATED_VIDEO": "perception/output_annotated.mp4",
     "KEYFRAMES_DIR": "perception/keyframes",
+    "EVIDENCE_DIR": "perception/evidence",
     "TTS_OUTPUT_DIR": "reasoning/tts_output",
     "DETECT_TRACK_SCRIPT": "perception/detect_track.py",
     "YOLO_RUNS_DIR": "runs",
@@ -61,6 +62,8 @@ def test_default_tunables_match_the_historical_literals(monkeypatch):
     assert cfg.STT_COMPUTE_TYPE == "int8"
     assert cfg.PROXIMITY_RATIO == 0.12
     assert cfg.MIN_TRACK_SECONDS == 0.4
+    assert cfg.ABANDON_SECONDS == 2.0
+    assert cfg.EVIDENCE_WIDTH == 240
     assert cfg.MAX_UPLOAD_BYTES == 500 * 1024 * 1024
     assert cfg.DETECT_TIMEOUT_SEC == 600
     assert cfg.API_URL == "http://localhost:8000"

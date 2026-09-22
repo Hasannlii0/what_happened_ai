@@ -24,6 +24,15 @@ def test_object_interactions_are_preferred_over_entrances():
     assert chosen == [5.0]
 
 
+def test_an_unattended_object_outranks_its_placement():
+    chosen = select_keyframe_times(
+        log(ev(1.0, "place", obj="Bag_2"), ev(4.0, "abandon", obj="Bag_2")),
+        count=1,
+    )
+
+    assert chosen == [4.0]
+
+
 def test_pick_up_outranks_approach():
     chosen = select_keyframe_times(
         log(ev(2.0, "approach", obj="Bag_2"), ev(6.0, "pick_up", obj="Bag_2")),

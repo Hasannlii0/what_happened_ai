@@ -60,6 +60,23 @@ def _grounded_keyframes(event_log):
     return paths, context, times
 
 
+def _write_evidence(event_log):
+    """Save one frame per event, from the annotated video when there is one so
+    the boxes that justified each event are visible in it.
+
+    A failure here only costs the thumbnails, so it must not fail the analysis.
+    """
+    from perception.keyframes import extract_evidence
+
+    source = (
+        config.ANNOTATED_VIDEO if config.ANNOTATED_VIDEO.exists() else config.VIDEO_PATH
+    )
+    try:
+        extract_evidence(source, [e.t for e in event_log.events])
+    except Exception:
+        logger.exception("could not extract evidence frames")
+
+
 def _events_from_last_analysis():
     """Re-derive the event log from the detections already on disk.
 
@@ -188,6 +205,7 @@ def _run_analysis():
         )
 
     event_log = extract_events(detection_log)
+    _write_evidence(event_log)
 
     try:
         from reasoning.vlm_qa import describe_scene
@@ -224,6 +242,17 @@ def annotated_video():
             status_code=404, content={"error": "No annotated video available."}
         )
     return FileResponse(config.ANNOTATED_VIDEO, media_type="video/mp4")
+
+
+@app.get("/evidence/{index}")
+def evidence(index: int):
+    path = config.EVIDENCE_DIR / f"event_{index}.jpg"
+    if index < 0 or not path.exists():
+        return JSONResponse(
+            status_code=404, content={"error": "No evidence frame for that event."}
+        )
+    # Bytes rather than a streamed path: the next analysis rewrites these files.
+    return Response(content=path.read_bytes(), media_type="image/jpeg")
 
 
 @app.post("/ask")

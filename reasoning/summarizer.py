@@ -24,6 +24,11 @@ def summarize(event_log: EventLog) -> str:
         elif e.event == "approach":
             target = e.location or e.object or "something"
             lines.append(f"{e.subject} approached {target} at {e.t:.1f}s.")
+        elif e.event == "abandon":
+            lines.append(
+                f"{e.object} was left unattended by {e.subject} "
+                f"(flagged at {e.t:.1f}s)."
+            )
         else:
             lines.append(f"{e.subject} {e.event} at {e.t:.1f}s.")
 

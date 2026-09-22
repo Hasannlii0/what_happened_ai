@@ -1,3 +1,4 @@
+import base64
 import html
 import sys
 from pathlib import Path
@@ -60,6 +61,20 @@ def track_colors(events):
 
 def timecode(seconds):
     return f"{int(seconds) // 60:02d}:{seconds % 60:04.1f}"
+
+
+def fetch_evidence(count):
+    frames = {}
+    for i in range(count):
+        res, err = call_api("get", f"/evidence/{i}", API_TIMEOUT)
+        if not err and res.status_code == 200:
+            frames[i] = res.content
+    return frames
+
+
+def describe(e):
+    target = f' {e["object"]}' if e.get("object") else ""
+    return f'{timecode(e["t"])} · {e["subject"]} {e["event"]}{target}'
 
 
 st.set_page_config(page_title="What Happened Here", layout="wide")
@@ -225,6 +240,7 @@ h1, h2, h3, p, span, label, div { font-family: 'IBM Plex Sans', sans-serif; }
     position: absolute; top: 6px;
     width: 2px; height: 18px; border-radius: 1px;
 }
+.timeline .tick.alert { top: 1px; width: 3px; height: 28px; }
 .timeline-scale {
     display: flex; justify-content: space-between;
     font-family: 'IBM Plex Mono', monospace;
@@ -235,7 +251,7 @@ h1, h2, h3, p, span, label, div { font-family: 'IBM Plex Sans', sans-serif; }
 
 .log-head, .log-row {
     display: grid;
-    grid-template-columns: 86px 1.1fr 0.9fr 1.3fr;
+    grid-template-columns: 44px 86px 1.1fr 0.9fr 1.3fr;
     align-items: center;
     gap: 12px;
     padding: 0 14px;
@@ -244,6 +260,7 @@ h1, h2, h3, p, span, label, div { font-family: 'IBM Plex Sans', sans-serif; }
     height: 30px;
     background: var(--raised);
     border-bottom: 1px solid var(--line);
+    border-radius: 4px 4px 0 0;
 }
 .log-head span {
     font-family: 'IBM Plex Mono', monospace;
@@ -256,7 +273,38 @@ h1, h2, h3, p, span, label, div { font-family: 'IBM Plex Sans', sans-serif; }
 .log-row .chip { width: 7px; height: 7px; border-radius: 2px; flex-shrink: 0; }
 .log-row .action { font-size: 12.5px; color: var(--text-2); }
 .log-row .object { font-size: 12.5px; color: var(--text); }
-.log-wrap { border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: var(--panel); }
+.log-row.alert { background: rgba(232,116,106,0.07); }
+.log-row.alert .action { color: var(--danger); font-weight: 600; }
+/* visible, not hidden: a zoomed thumbnail has to be able to leave its row */
+.log-wrap { border: 1px solid var(--line); border-radius: 4px; overflow: visible; background: var(--panel); }
+
+.thumb {
+    height: 26px; width: auto; display: block;
+    border: 1px solid var(--line-2); border-radius: 2px;
+    position: relative; z-index: 1;
+    transform-origin: left center;
+    transition: transform 0.12s ease;
+}
+.thumb:hover { transform: scale(7); z-index: 20; box-shadow: 0 10px 30px rgba(0,0,0,0.7); }
+.thumb-none { width: 7px; height: 1px; background: var(--line-2); }
+
+/* ---------- alerts ---------- */
+
+.alert-banner {
+    display: flex; gap: 12px; align-items: flex-start;
+    background: rgba(232,116,106,0.10);
+    border: 1px solid rgba(232,116,106,0.45);
+    border-radius: 4px;
+    padding: 12px 16px;
+    margin-bottom: 18px;
+}
+.alert-banner .label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px; letter-spacing: 0.12em; color: var(--danger);
+    margin-bottom: 3px;
+}
+.alert-banner .body { font-size: 13px; line-height: 1.55; color: var(--text); }
+.alert-banner .body .t { font-family: 'IBM Plex Mono', monospace; color: var(--danger); }
 
 /* ---------- answer ---------- */
 
@@ -350,6 +398,8 @@ hr { border-color: var(--line) !important; }
 
 if "result" not in st.session_state:
     st.session_state.result = None
+if "evidence" not in st.session_state:
+    st.session_state.evidence = {}
 
 header = st.empty()
 
@@ -394,6 +444,7 @@ col_upload, col_analyze, _ = st.columns([1, 1, 5])
 with col_upload:
     if st.button("Upload", disabled=uploaded_file is None):
         st.session_state.result = None
+        st.session_state.evidence = {}
         res, err = call_api(
             "post",
             "/upload",
@@ -418,6 +469,9 @@ with col_analyze:
             st.error(err)
         elif res.status_code == 200:
             st.session_state.result = res.json()
+            st.session_state.evidence = fetch_evidence(
+                len(st.session_state.result.get("events", []))
+            )
         else:
             st.error(api_error(res, "Analysis failed"))
         render_header(
@@ -433,7 +487,7 @@ if not st.session_state.result:
   <p class="empty-sub">A short clip works best. Everything runs on this machine &mdash; the video is not sent anywhere, and each new upload replaces the last one.</p>
   <div class="steps">
     <div class="step"><div class="n">01</div><div class="h">Detect &amp; track</div><div class="b">YOLOv8n finds people and objects; BoT-SORT keeps an identity on each one across frames.</div></div>
-    <div class="step"><div class="n">02</div><div class="h">Extract events</div><div class="b">Track lifetimes and proximity become enter, exit, place, pick up and approach.</div></div>
+    <div class="step"><div class="n">02</div><div class="h">Extract events</div><div class="b">Track lifetimes and proximity become enter, exit, place, pick up and approach, and unattended objects are flagged.</div></div>
     <div class="step"><div class="n">03</div><div class="h">Describe</div><div class="b">Keyframes go to Qwen2-VL, which writes the report in plain language.</div></div>
     <div class="step"><div class="n">04</div><div class="h">Ask</div><div class="b">Question the footage by text or voice and hear the answer read back.</div></div>
   </div>
@@ -447,6 +501,28 @@ else:
     events = result.get("events", [])
     colors = track_colors(events)
     span = max((e["t"] for e in events), default=0.0)
+    evidence = st.session_state.evidence
+
+    abandoned = [e for e in events if e["event"] == "abandon"]
+    if abandoned:
+        lines = "".join(
+            f'<div>{html.escape(str(e["object"]))} left by '
+            f'{html.escape(str(e["subject"]))} &mdash; unattended at '
+            f'<span class="t">{timecode(e["t"])}</span></div>'
+            for e in abandoned
+        )
+        st.markdown(
+            f"""
+<div class="alert-banner" role="alert">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E8746A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0; margin-top:1px;"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+  <div>
+    <div class="label">UNATTENDED OBJECT</div>
+    <div class="body">{lines}</div>
+  </div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
 
     col1, col2 = st.columns([2, 1], gap="medium")
 
@@ -473,7 +549,8 @@ else:
 
         if span > 0:
             ticks = "".join(
-                f'<div class="tick" style="left: calc({e["t"] / span * 100:.2f}% - 1px);'
+                f'<div class="tick{" alert" if e["event"] == "abandon" else ""}"'
+                f' style="left: calc({e["t"] / span * 100:.2f}% - 1px);'
                 f' background: {colors[e["subject"]]};"></div>'
                 for e in events
             )
@@ -522,25 +599,47 @@ else:
     )
 
     if events:
+
+        def thumb(i, e):
+            if i not in evidence:
+                return '<span class="thumb-none"></span>'
+            data = base64.b64encode(evidence[i]).decode("ascii")
+            return (
+                f'<img class="thumb" src="data:image/jpeg;base64,{data}" '
+                f'alt="{html.escape(describe(e))}">'
+            )
+
         rows = "".join(
-            f'<div class="log-row">'
+            f'<div class="log-row{" alert" if e["event"] == "abandon" else ""}">'
+            f"<span>{thumb(i, e)}</span>"
             f'<span class="t">{timecode(e["t"])}</span>'
             f'<span class="subject"><span class="chip" style="background:{colors[e["subject"]]}"></span>'
             f'{html.escape(str(e["subject"]))}</span>'
             f'<span class="action">{html.escape(str(e["event"]))}</span>'
             f'<span class="object">{html.escape(str(e.get("object") or "—"))}</span>'
             f"</div>"
-            for e in events
+            for i, e in enumerate(events)
         )
         st.markdown(
             f"""
 <div class="log-wrap">
-  <div class="log-head"><span>TIME</span><span>SUBJECT</span><span>ACTION</span><span>OBJECT</span></div>
+  <div class="log-head"><span>FRAME</span><span>TIME</span><span>SUBJECT</span><span>ACTION</span><span>OBJECT</span></div>
   {rows}
 </div>
 """,
             unsafe_allow_html=True,
         )
+
+        # Hover zoom is mouse-only; this gives keyboard and touch users the
+        # same evidence at a readable size.
+        if evidence:
+            with st.expander(f"Evidence frames ({len(evidence)})"):
+                grid = st.columns(4)
+                for slot, (i, e) in enumerate(
+                    (i, e) for i, e in enumerate(events) if i in evidence
+                ):
+                    with grid[slot % 4]:
+                        st.image(evidence[i], caption=describe(e))
     else:
         st.markdown(
             '<div class="panel" style="color: var(--text-3); font-size: 13px;">'

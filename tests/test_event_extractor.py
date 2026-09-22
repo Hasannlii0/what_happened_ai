@@ -92,6 +92,65 @@ def test_min_track_seconds_is_tunable():
     assert "Person_7" in [e.subject for e in lenient.events]
 
 
+def test_object_left_behind_after_its_owner_exits_is_flagged():
+    detections = [det(f, 1, "person", PERSON_BBOX) for f in (0, 30, 60)]
+    detections += [det(f, 2, "backpack", NEAR_BBOX) for f in (30, 60, 90, 120, 150)]
+
+    log = extract_events(make_log(detections))
+
+    assert tuples(log) == [
+        ("enter", "Person_1", None),
+        ("place", "Person_1", "Backpack_2"),
+        ("exit", "Person_1", None),
+        ("abandon", "Person_1", "Backpack_2"),
+    ]
+    abandon = [e for e in log.events if e.event == "abandon"][0]
+    assert abandon.t == pytest.approx(2.0 + 2.0)
+
+
+def test_object_is_not_flagged_while_its_owner_is_still_present():
+    frames = (0, 30, 60, 90, 120, 150)
+    detections = [det(f, 1, "person", PERSON_BBOX) for f in frames]
+    detections += [det(f, 2, "backpack", NEAR_BBOX) for f in frames[1:]]
+
+    log = extract_events(make_log(detections))
+
+    assert "abandon" not in kinds(log)
+
+
+def test_object_collected_soon_after_its_owner_leaves_is_not_flagged():
+    detections = [det(f, 1, "person", PERSON_BBOX) for f in (0, 30, 60)]
+    detections += [det(f, 2, "backpack", NEAR_BBOX) for f in (30, 60, 90)]
+    detections += [det(f, 3, "person", PERSON_BBOX) for f in (90, 120, 150)]
+
+    log = extract_events(make_log(detections))
+
+    assert "abandon" not in kinds(log)
+    assert ("pick_up", "Person_3", "Backpack_2") in tuples(log)
+
+
+def test_object_unattended_long_enough_is_flagged_even_if_someone_takes_it_later():
+    detections = [det(f, 1, "person", PERSON_BBOX) for f in (0, 30, 60)]
+    detections += [det(f, 2, "backpack", NEAR_BBOX) for f in range(30, 181, 30)]
+    detections += [det(f, 3, "person", PERSON_BBOX) for f in (180, 210)]
+
+    log = extract_events(make_log(detections))
+
+    assert ("abandon", "Person_1", "Backpack_2") in tuples(log)
+    assert ("pick_up", "Person_3", "Backpack_2") in tuples(log)
+
+
+def test_abandon_threshold_is_tunable():
+    detections = [det(f, 1, "person", PERSON_BBOX) for f in (0, 30, 60)]
+    detections += [det(f, 2, "backpack", NEAR_BBOX) for f in (30, 60, 90, 120, 150)]
+
+    strict = extract_events(make_log(detections), abandon_seconds=4.0)
+    lenient = extract_events(make_log(detections), abandon_seconds=1.0)
+
+    assert "abandon" not in kinds(strict)
+    assert "abandon" in kinds(lenient)
+
+
 def test_object_present_from_first_frame_is_not_placed_or_picked_up():
     frames = (0, 30, 60, 90)
     detections = [det(f, 1, "person", PERSON_BBOX) for f in frames]

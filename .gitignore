@@ -7,6 +7,7 @@ mlruns/
 *.avi
 perception/detections.json
 perception/keyframes/
+perception/evidence/
 .env
 reasoning/tts_output/
 .streamlit/secrets.toml

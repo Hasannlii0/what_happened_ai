@@ -55,6 +55,14 @@ def test_approach_prefers_location_over_object():
     assert text == "Person_1 approached the door at 3.0s."
 
 
+def test_abandon_names_the_object_and_who_left_it():
+    text = summarize(
+        log(Event(t=4.0, event="abandon", subject="Person_1", object="Backpack_2"))
+    )
+
+    assert text == "Backpack_2 was left unattended by Person_1 (flagged at 4.0s)."
+
+
 def test_unknown_event_kind_is_reported_rather_than_dropped():
     text = summarize(
         log(
