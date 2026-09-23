@@ -1,0 +1,4 @@
+# Launchers must keep the line endings their shell expects no matter how a
+# contributor's git converts text: sh chokes on CRLF, cmd.exe misparses LF.
+*.sh  text eol=lf
+*.cmd text eol=crlf

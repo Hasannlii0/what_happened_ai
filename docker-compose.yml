@@ -1,3 +1,6 @@
+# Start with ./run.sh (Linux, macOS, Git Bash) or run.cmd (Windows). They add
+# docker-compose.gpu.yml when Docker can use an NVIDIA GPU on this machine and
+# fall back to this CPU setup otherwise. Plain `docker compose up` is always CPU.
 services:
   api:
     build:
