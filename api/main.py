@@ -159,6 +159,13 @@ def upload_video(file: UploadFile = File(...)):
             )
 
         os.replace(tmp_path, config.VIDEO_PATH)
+
+        # The previous analysis describes the previous video. Left in place,
+        # /ask, /describe and /evidence would answer about the wrong footage.
+        config.DETECTIONS_JSON.unlink(missing_ok=True)
+        config.ANNOTATED_VIDEO.unlink(missing_ok=True)
+        for stale in config.EVIDENCE_DIR.glob("event_*.jpg"):
+            stale.unlink(missing_ok=True)
     finally:
         tmp_path.unlink(missing_ok=True)
         PIPELINE_LOCK.release()
