@@ -77,6 +77,37 @@ def describe(e):
     return f'{timecode(e["t"])} · {e["subject"]} {e["event"]}{target}'
 
 
+def report_html(result, pending):
+    source = result.get("summary_source")
+    if pending:
+        badge = '<span class="badge badge-pending">writing&hellip;</span>'
+        note = (
+            "Draft built from the event log. The vision model is writing the "
+            "full report; on CPU this takes a couple of minutes."
+        )
+    elif source == "vlm":
+        badge = '<span class="badge badge-vlm">Qwen2-VL</span>'
+        note = ""
+    else:
+        badge = '<span class="badge badge-tpl">template fallback</span>'
+        note = (
+            "The vision model did not answer, so this is a rule-based summary "
+            "of the detected events rather than a description of the footage."
+        )
+
+    note_html = f'<p class="report-note">{note}</p>' if note else ""
+    return f"""
+<div class="panel">
+  <div style="display:flex; align-items:center; gap:10px;">
+    <span style="font-size:13px; font-weight:600; color:var(--text);">Field report</span>
+    <span style="flex-grow:1;"></span>{badge}
+  </div>
+  <p class="report">{html.escape(result["summary"])}</p>
+  {note_html}
+</div>
+"""
+
+
 st.set_page_config(page_title="What Happened Here", layout="wide")
 
 st.markdown(
@@ -218,6 +249,8 @@ h1, h2, h3, p, span, label, div { font-family: 'IBM Plex Sans', sans-serif; }
 }
 .badge-vlm { background: rgba(88,166,232,0.12); border: 1px solid rgba(88,166,232,0.40); color: #58A6E8; }
 .badge-tpl { background: rgba(232,116,106,0.12); border: 1px solid rgba(232,116,106,0.40); color: var(--danger); }
+.badge-pending { background: rgba(245,165,36,0.12); border: 1px solid rgba(245,165,36,0.40); color: var(--accent); }
+.report-note { font-size: 12px; line-height: 1.5; color: var(--text-3); margin: 10px 0 0 0; }
 
 /* ---------- field report ---------- */
 
@@ -400,6 +433,8 @@ if "result" not in st.session_state:
     st.session_state.result = None
 if "evidence" not in st.session_state:
     st.session_state.evidence = {}
+if "describe_pending" not in st.session_state:
+    st.session_state.describe_pending = False
 
 header = st.empty()
 
@@ -445,6 +480,7 @@ with col_upload:
     if st.button("Upload", disabled=uploaded_file is None):
         st.session_state.result = None
         st.session_state.evidence = {}
+        st.session_state.describe_pending = False
         res, err = call_api(
             "post",
             "/upload",
@@ -472,6 +508,7 @@ with col_analyze:
             st.session_state.evidence = fetch_evidence(
                 len(st.session_state.result.get("events", []))
             )
+            st.session_state.describe_pending = True
         else:
             st.error(api_error(res, "Analysis failed"))
         render_header(
@@ -563,30 +600,13 @@ else:
             )
 
     with col2:
-        is_template = result.get("summary_source") == "template"
-        badge = (
-            '<span class="badge badge-tpl">template fallback</span>'
-            if is_template
-            else '<span class="badge badge-vlm">Qwen2-VL</span>'
-        )
-        st.markdown(
-            f"""
-<div class="panel">
-  <div style="display:flex; align-items:center; gap:10px;">
-    <span style="font-size:13px; font-weight:600; color:var(--text);">Field report</span>
-    <span style="flex-grow:1;"></span>{badge}
-  </div>
-  <p class="report">{html.escape(result["summary"])}</p>
-</div>
-""",
+        # A placeholder, so the finished VLM report can replace the draft in
+        # place once /describe returns at the end of this run.
+        report_slot = st.empty()
+        report_slot.markdown(
+            report_html(result, st.session_state.describe_pending),
             unsafe_allow_html=True,
         )
-
-        if is_template:
-            st.caption(
-                "The vision model did not answer, so this is a rule-based summary "
-                "of the detected events rather than a description of the footage."
-            )
 
         if st.button("Hear report"):
             with st.spinner("Generating voice..."):
@@ -699,3 +719,16 @@ else:
             play_speech(answer)
         else:
             st.error(api_error(res, "Question failed"))
+
+    # Last on purpose: everything above is already on screen, so the user can
+    # read the log and the evidence while the vision model writes the report.
+    if st.session_state.describe_pending:
+        res, err = call_api("post", "/describe", MODEL_TIMEOUT)
+        if not err and res.status_code == 200:
+            body = res.json()
+            result["summary"] = body["summary"]
+            result["summary_source"] = body["summary_source"]
+        else:
+            result["summary_source"] = "template"
+        st.session_state.describe_pending = False
+        report_slot.markdown(report_html(result, False), unsafe_allow_html=True)

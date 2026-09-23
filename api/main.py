@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -22,10 +23,34 @@ from schema import AnalysisResult, DetectionLog
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+
+def _warm_vlm():
+    try:
+        from reasoning.vlm_qa import _load
+
+        _load()
+    except Exception:
+        logger.exception("VLM warm-up failed; it will load on first use instead")
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    # Loading the VLM takes ~10s. Doing it on a background thread at startup
+    # means the first report does not pay for it, while the server still comes
+    # up (and passes its healthcheck) immediately.
+    threading.Thread(target=_warm_vlm, daemon=True).start()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 PIPELINE_LOCK = threading.Lock()
 BUSY_MESSAGE = "Another upload or analysis is already running. Try again in a moment."
+
+# The VLM report for the current analysis, keyed by the files it was computed
+# from so a new upload or re-analysis can never be answered with a stale one.
+DESCRIBE_LOCK = threading.Lock()
+_description = {"key": None, "value": None}
 
 
 def _is_decodable_video(path: Path) -> bool:
@@ -207,28 +232,18 @@ def _run_analysis():
     event_log = extract_events(detection_log)
     _write_evidence(event_log)
 
-    try:
-        from reasoning.vlm_qa import describe_scene
-
-        keyframe_paths, events_text, frame_times = _grounded_keyframes(event_log)
-        if not keyframe_paths:
-            raise RuntimeError("no frames could be decoded from the video")
-        summary_text = describe_scene(keyframe_paths, events_text, frame_times)
-        summary_source = "vlm"
-    except Exception:
-        logger.exception("scene description failed, falling back to the template")
-        summary_text = summarize(event_log)
-        summary_source = "template"
-
     annotated_name = (
         config.ANNOTATED_VIDEO.name if config.ANNOTATED_VIDEO.exists() else None
     )
 
+    # The VLM report takes minutes on CPU, so it is no longer part of this
+    # request. The rule-based summary is returned now and POST /describe
+    # replaces it; "events" marks it as that interim draft.
     analysis_result = AnalysisResult(
         video_id=event_log.video_id,
         events=event_log.events,
-        summary=summary_text,
-        summary_source=summary_source,
+        summary=summarize(event_log),
+        summary_source="events",
         annotated_video_path=annotated_name,
     )
 
@@ -242,6 +257,46 @@ def annotated_video():
             status_code=404, content={"error": "No annotated video available."}
         )
     return FileResponse(config.ANNOTATED_VIDEO, media_type="video/mp4")
+
+
+@app.post("/describe")
+def describe():
+    event_log = _events_from_last_analysis()
+    if event_log is None or not config.VIDEO_PATH.exists():
+        return JSONResponse(status_code=404, content={"error": "Run an analysis first."})
+
+    key = (
+        config.DETECTIONS_JSON.stat().st_mtime_ns,
+        config.VIDEO_PATH.stat().st_mtime_ns,
+    )
+
+    # Blocking, not try-acquire: a second caller (a UI rerun, say) waits for
+    # the first and then gets its cached answer instead of a second VLM pass.
+    with DESCRIBE_LOCK:
+        if _description["key"] == key:
+            return _description["value"]
+
+        try:
+            from reasoning.vlm_qa import describe_scene
+
+            keyframe_paths, events_text, frame_times = _grounded_keyframes(event_log)
+            if not keyframe_paths:
+                raise RuntimeError("no frames could be decoded from the video")
+            value = {
+                "summary": describe_scene(keyframe_paths, events_text, frame_times),
+                "summary_source": "vlm",
+            }
+        except Exception as e:
+            logger.exception("scene description failed, falling back to the template")
+            # Not cached: a transient failure should be retryable.
+            return {
+                "summary": summarize(event_log),
+                "summary_source": "template",
+                "detail": type(e).__name__,
+            }
+
+        _description.update(key=key, value=value)
+        return value
 
 
 @app.get("/evidence/{index}")

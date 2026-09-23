@@ -1,5 +1,6 @@
 import os
 import sys
+import threading
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
@@ -14,28 +15,36 @@ import config
 _model = None
 _processor = None
 _device = None
+# The API warms the model on a background thread at startup. Without this, a
+# request arriving mid-warm-up would start a second 4GB load and exhaust memory.
+_load_lock = threading.Lock()
 
 
 def _load():
     global _model, _processor, _device
 
-    if _model is None:
-        device = config.VLM_DEVICE or ("cuda" if torch.cuda.is_available() else "cpu")
-        # float32 weights for a 2B model are ~8GB, which does not fit a default
-        # Docker memory budget. bfloat16 halves that and keeps float32's exponent
-        # range, so it does not overflow the way float16 does on CPU.
-        dtype = (
-            getattr(torch, config.VLM_DTYPE)
-            if config.VLM_DTYPE
-            else (torch.float16 if device.startswith("cuda") else torch.bfloat16)
-        )
-        model = Qwen2VLForConditionalGeneration.from_pretrained(
-            config.VLM_MODEL, torch_dtype=dtype, device_map=device
-        )
-        processor = AutoProcessor.from_pretrained(config.VLM_MODEL)
-        _model, _processor, _device = model, processor, device
+    with _load_lock:
+        if _model is None:
+            _model, _processor, _device = _build()
 
     return _model, _processor, _device
+
+
+def _build():
+    device = config.VLM_DEVICE or ("cuda" if torch.cuda.is_available() else "cpu")
+    # float32 weights for a 2B model are ~8GB, which does not fit a default
+    # Docker memory budget. bfloat16 halves that and keeps float32's exponent
+    # range, so it does not overflow the way float16 does on CPU.
+    dtype = (
+        getattr(torch, config.VLM_DTYPE)
+        if config.VLM_DTYPE
+        else (torch.float16 if device.startswith("cuda") else torch.bfloat16)
+    )
+    model = Qwen2VLForConditionalGeneration.from_pretrained(
+        config.VLM_MODEL, torch_dtype=dtype, device_map=device
+    )
+    processor = AutoProcessor.from_pretrained(config.VLM_MODEL)
+    return model, processor, device
 
 
 def build_prompt(question: str, events_text: str = "", frame_times=None) -> str:

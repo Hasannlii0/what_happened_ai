@@ -49,6 +49,13 @@ def reencode_annotated(save_dir):
         return
 
     raw_path = max(candidates, key=os.path.getmtime)
+    side = config.ANNOTATED_MAX_SIDE
+    # Shrink the longer side to the cap, never upscale; -2 keeps the aspect
+    # ratio and an even dimension, which yuv420p requires.
+    scale = (
+        f"scale=w='if(gte(iw,ih),min(iw,{side}),-2)'"
+        f":h='if(gte(iw,ih),-2,min(ih,{side}))'"
+    )
     command = [
         "ffmpeg",
         "-y",
@@ -56,8 +63,14 @@ def reencode_annotated(save_dir):
         "error",
         "-i",
         str(raw_path),
+        "-vf",
+        scale,
         "-vcodec",
         "libx264",
+        # The default "medium" preset spends most of its time on compression a
+        # local preview never needs; veryfast is several times quicker.
+        "-preset",
+        "veryfast",
         "-pix_fmt",
         "yuv420p",
         str(config.ANNOTATED_VIDEO),

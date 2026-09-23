@@ -44,6 +44,9 @@ PROXIMITY_RATIO = float(os.environ.get("WH_PROXIMITY_RATIO", "0.12"))
 MIN_TRACK_SECONDS = float(os.environ.get("WH_MIN_TRACK_SECONDS", "0.4"))
 ABANDON_SECONDS = float(os.environ.get("WH_ABANDON_SECONDS", "2.0"))
 EVIDENCE_WIDTH = int(os.environ.get("WH_EVIDENCE_WIDTH", "240"))
+# The annotated video is only ever a preview, so it is capped here rather than
+# re-encoded, searched and streamed at the source resolution (4K from a phone).
+ANNOTATED_MAX_SIDE = int(os.environ.get("WH_ANNOTATED_MAX_SIDE", "1280"))
 
 MAX_UPLOAD_BYTES = int(os.environ.get("WH_MAX_UPLOAD_BYTES", str(500 * 1024 * 1024)))
 DETECT_TIMEOUT_SEC = int(os.environ.get("WH_DETECT_TIMEOUT_SEC", "600"))

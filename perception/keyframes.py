@@ -102,26 +102,41 @@ def extract_evidence(
     for stale in output_dir.glob("event_*.jpg"):
         os.remove(stale)
 
+    paths = [None] * len(timestamps)
+
     cap = cv2.VideoCapture(str(video_path))
     try:
         if not cap.isOpened():
             raise ValueError(f"cannot read video: {video_path}")
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if fps <= 0:
+            return paths
 
-        paths = []
+        wanted = {}
         for i, t in enumerate(timestamps):
-            path = None
-            if fps > 0 and total_frames > 0 and t >= 0:
-                cap.set(cv2.CAP_PROP_POS_FRAMES, min(int(t * fps), total_frames - 1))
-                ok, frame = cap.read()
+            if t >= 0:
+                index = int(t * fps)
+                if total_frames > 0:
+                    index = min(index, total_frames - 1)
+                wanted.setdefault(index, []).append(i)
+
+        # One forward pass decodes every frame exactly once. Seeking per event
+        # instead makes H.264 re-decode from the previous keyframe each time,
+        # which took 65s for 95 events on a 4K clip.
+        frame_index = 0
+        last_wanted = max(wanted, default=-1)
+        while frame_index <= last_wanted and cap.grab():
+            if frame_index in wanted:
+                ok, frame = cap.retrieve()
                 if ok:
                     h, w = frame.shape[:2]
                     frame = cv2.resize(frame, (width, max(int(h * width / w), 1)))
-                    candidate = output_dir / f"event_{i}.jpg"
-                    if cv2.imwrite(str(candidate), frame):
-                        path = str(candidate)
-            paths.append(path)
+                    for i in wanted[frame_index]:
+                        candidate = output_dir / f"event_{i}.jpg"
+                        if cv2.imwrite(str(candidate), frame):
+                            paths[i] = str(candidate)
+            frame_index += 1
     finally:
         cap.release()
 
