@@ -28,6 +28,7 @@ DEFAULT_PATHS = {
     "VIDEO_PATH": "test_video.mp4",
     "DETECTIONS_JSON": "perception/detections.json",
     "ANNOTATED_VIDEO": "perception/output_annotated.mp4",
+    "WORK_VIDEO": "perception/work.mp4",
     "KEYFRAMES_DIR": "perception/keyframes",
     "EVIDENCE_DIR": "perception/evidence",
     "TTS_OUTPUT_DIR": "reasoning/tts_output",
@@ -64,7 +65,7 @@ def test_default_tunables_match_the_historical_literals(monkeypatch):
     assert cfg.MIN_TRACK_SECONDS == 0.4
     assert cfg.ABANDON_SECONDS == 2.0
     assert cfg.EVIDENCE_WIDTH == 240
-    assert cfg.ANNOTATED_MAX_SIDE == 1280
+    assert cfg.WORK_MAX_SIDE == 1280
     assert cfg.MAX_UPLOAD_BYTES == 500 * 1024 * 1024
     assert cfg.DETECT_TIMEOUT_SEC == 600
     assert cfg.API_URL == "http://localhost:8000"

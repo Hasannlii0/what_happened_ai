@@ -32,16 +32,64 @@ def probe_video(path):
     return fps, width, height, frame_count
 
 
-def reencode_annotated(save_dir):
+def _scale_filter(side):
+    # Shrink the longer side to the cap, never upscale; -2 keeps the aspect
+    # ratio and an even dimension, which yuv420p requires.
+    return (
+        f"scale=w='if(gte(iw,ih),min(iw,{side}),-2)'"
+        f":h='if(gte(iw,ih),-2,min(ih,{side}))'"
+    )
+
+
+def make_working_copy(width, height):
+    """A copy of the upload no larger than WORK_MAX_SIDE, or the upload itself.
+
+    YOLO letterboxes every frame to 640px, so a 4K source buys no accuracy. It
+    only makes decoding, BoT-SORT's per-frame optical flow and the annotated
+    video several times more expensive: 25s of tracking at 4K against 7s at
+    1280 on the same clip, with identical detections.
+    """
+    side = config.WORK_MAX_SIDE
+    if max(width, height) <= side:
+        return config.VIDEO_PATH, width, height
+
+    command = [
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-i", str(config.VIDEO_PATH),
+        "-vf", _scale_filter(side),
+        # One output frame per input frame, so frame indices -- and every
+        # timestamp derived from them -- still match the original upload.
+        "-fps_mode", "passthrough",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+        "-an",
+        str(config.WORK_VIDEO),
+    ]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True)
+    except FileNotFoundError:
+        result = None
+    if result is None or result.returncode != 0:
+        print(
+            "WARNING: could not downscale the upload, tracking at full resolution.",
+            file=sys.stderr,
+        )
+        return config.VIDEO_PATH, width, height
+
+    _, work_width, work_height, _ = probe_video(config.WORK_VIDEO)
+    return config.WORK_VIDEO, work_width, work_height
+
+
+def reencode_annotated(save_dir, source_stem):
     # Anything already at this path is a previous run's video and must never be
     # served as this one's.
     config.ANNOTATED_VIDEO.unlink(missing_ok=True)
 
-    # The run directory is reused across runs (exist_ok=True), so match this
-    # run's source name rather than whatever video happens to be newest.
+    # The run directory is reused across runs (exist_ok=True), so match the name
+    # YOLO gave this run's output -- its input's stem -- rather than whatever
+    # video happens to be newest.
     candidates = [
         p
-        for p in save_dir.glob(f"{config.VIDEO_PATH.stem}.*")
+        for p in save_dir.glob(f"{source_stem}.*")
         if p.suffix in {".mp4", ".avi"}
     ]
     if not candidates:
@@ -49,13 +97,6 @@ def reencode_annotated(save_dir):
         return
 
     raw_path = max(candidates, key=os.path.getmtime)
-    side = config.ANNOTATED_MAX_SIDE
-    # Shrink the longer side to the cap, never upscale; -2 keeps the aspect
-    # ratio and an even dimension, which yuv420p requires.
-    scale = (
-        f"scale=w='if(gte(iw,ih),min(iw,{side}),-2)'"
-        f":h='if(gte(iw,ih),-2,min(ih,{side}))'"
-    )
     command = [
         "ffmpeg",
         "-y",
@@ -64,7 +105,7 @@ def reencode_annotated(save_dir):
         "-i",
         str(raw_path),
         "-vf",
-        scale,
+        _scale_filter(config.WORK_MAX_SIDE),
         "-vcodec",
         "libx264",
         # The default "medium" preset spends most of its time on compression a
@@ -101,6 +142,7 @@ def reencode_annotated(save_dir):
 def run():
     fps, width, height, frame_count = probe_video(config.VIDEO_PATH)
     duration = frame_count / fps if frame_count > 0 else 0
+    source, work_width, work_height = make_working_copy(width, height)
 
     mlflow.set_experiment(config.MLFLOW_EXPERIMENT)
 
@@ -111,11 +153,12 @@ def run():
         mlflow.log_param("model", config.YOLO_MODEL)
         mlflow.log_param("video_fps", fps)
         mlflow.log_param("video_duration_sec", round(duration, 2))
+        mlflow.log_param("work_resolution", f"{work_width}x{work_height}")
 
         model = YOLO(config.YOLO_MODEL)
 
         results = model.track(
-            source=str(config.VIDEO_PATH),
+            source=str(source),
             stream=True,
             persist=True,
             tracker=config.TRACKER,
@@ -153,11 +196,13 @@ def run():
                     )
                 )
 
+        # Boxes are in the working copy's pixels, so the declared frame size
+        # must be too, or the proximity threshold is computed on the wrong scale.
         log = DetectionLog(
             video_id=config.VIDEO_PATH.stem,
             fps=fps,
-            frame_width=width,
-            frame_height=height,
+            frame_width=work_width,
+            frame_height=work_height,
             detections=detections,
         )
 
@@ -168,7 +213,9 @@ def run():
         mlflow.log_metric("num_unique_tracks", len(unique_track_ids))
         mlflow.log_artifact(str(config.DETECTIONS_JSON))
 
-        reencode_annotated(Path(model.predictor.save_dir))
+        reencode_annotated(Path(model.predictor.save_dir), Path(source).stem)
+        if source == config.WORK_VIDEO:
+            config.WORK_VIDEO.unlink(missing_ok=True)
 
         print(
             f"Saved {len(detections)} detections ({len(unique_track_ids)} unique tracks) to {config.DETECTIONS_JSON}"

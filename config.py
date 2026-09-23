@@ -14,6 +14,7 @@ def _path(env_var: str, default: str) -> Path:
 VIDEO_PATH = _path("WH_VIDEO_PATH", "test_video.mp4")
 DETECTIONS_JSON = _path("WH_DETECTIONS_JSON", "perception/detections.json")
 ANNOTATED_VIDEO = _path("WH_ANNOTATED_VIDEO", "perception/output_annotated.mp4")
+WORK_VIDEO = _path("WH_WORK_VIDEO", "perception/work.mp4")
 KEYFRAMES_DIR = _path("WH_KEYFRAMES_DIR", "perception/keyframes")
 EVIDENCE_DIR = _path("WH_EVIDENCE_DIR", "perception/evidence")
 TTS_OUTPUT_DIR = _path("WH_TTS_OUTPUT_DIR", "reasoning/tts_output")
@@ -44,9 +45,10 @@ PROXIMITY_RATIO = float(os.environ.get("WH_PROXIMITY_RATIO", "0.12"))
 MIN_TRACK_SECONDS = float(os.environ.get("WH_MIN_TRACK_SECONDS", "0.4"))
 ABANDON_SECONDS = float(os.environ.get("WH_ABANDON_SECONDS", "2.0"))
 EVIDENCE_WIDTH = int(os.environ.get("WH_EVIDENCE_WIDTH", "240"))
-# The annotated video is only ever a preview, so it is capped here rather than
-# re-encoded, searched and streamed at the source resolution (4K from a phone).
-ANNOTATED_MAX_SIDE = int(os.environ.get("WH_ANNOTATED_MAX_SIDE", "1280"))
+# Detection, tracking and the annotated preview all run on a copy no larger than
+# this. YOLO letterboxes to 640px regardless, so a 4K upload (normal from a
+# phone) only makes every stage slower, not more accurate.
+WORK_MAX_SIDE = int(os.environ.get("WH_WORK_MAX_SIDE", "1280"))
 
 MAX_UPLOAD_BYTES = int(os.environ.get("WH_MAX_UPLOAD_BYTES", str(500 * 1024 * 1024)))
 DETECT_TIMEOUT_SEC = int(os.environ.get("WH_DETECT_TIMEOUT_SEC", "600"))
