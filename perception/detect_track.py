@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -144,12 +145,30 @@ def reencode_annotated(save_dir, source_stem, fps):
     print(f"Annotated video re-encoded and saved to {config.ANNOTATED_VIDEO}")
 
 
+def use_repo_relative_artifacts(experiment_id):
+    """MLflow stores an absolute path, which is wrong on the host or in the container."""
+    prefix = "sqlite:///"
+    if not config.MLFLOW_TRACKING_URI.startswith(prefix):
+        return
+    # MLflow has no API to change an experiment's artifact location.
+    with sqlite3.connect(config.MLFLOW_TRACKING_URI[len(prefix):]) as con:
+        con.execute(
+            "UPDATE experiments SET artifact_location = ? WHERE experiment_id = ?",
+            (f"mlruns/{experiment_id}", experiment_id),
+        )
+
+
 def run():
+    # MLflow resolves a relative artifact location against the cwd when it logs.
+    os.chdir(config.REPO_ROOT)
+
     fps, width, height, frame_count = probe_video(config.VIDEO_PATH)
     duration = frame_count / fps if frame_count > 0 else 0
     source, work_width, work_height = make_working_copy(width, height)
 
-    mlflow.set_experiment(config.MLFLOW_EXPERIMENT)
+    mlflow.set_tracking_uri(config.MLFLOW_TRACKING_URI)
+    experiment = mlflow.set_experiment(config.MLFLOW_EXPERIMENT)
+    use_repo_relative_artifacts(experiment.experiment_id)
 
     with mlflow.start_run():
         mlflow.log_param("conf_threshold", config.CONF_THRESHOLD)

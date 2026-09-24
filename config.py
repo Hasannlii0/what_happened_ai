@@ -27,6 +27,10 @@ TRACKER = os.environ.get("WH_TRACKER", "botsort.yaml")
 CONF_THRESHOLD = float(os.environ.get("WH_CONF_THRESHOLD", "0.5"))
 IOU_THRESHOLD = float(os.environ.get("WH_IOU_THRESHOLD", "0.5"))
 MLFLOW_EXPERIMENT = os.environ.get("WH_MLFLOW_EXPERIMENT", "what_happened_ai")
+# Repo-pinned, not cwd-relative, so the host and the container share one history.
+MLFLOW_TRACKING_URI = os.environ.get(
+    "WH_MLFLOW_TRACKING_URI", f"sqlite:///{(REPO_ROOT / 'mlflow.db').as_posix()}"
+)
 
 KEYFRAME_COUNT = int(os.environ.get("WH_KEYFRAME_COUNT", "3"))
 # Qwen2-VL turns a frame into roughly (w/28)*(h/28) tokens, and encoding those

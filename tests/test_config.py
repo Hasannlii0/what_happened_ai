@@ -53,6 +53,7 @@ def test_default_tunables_match_the_historical_literals(monkeypatch):
     assert cfg.CONF_THRESHOLD == 0.5
     assert cfg.IOU_THRESHOLD == 0.5
     assert cfg.MLFLOW_EXPERIMENT == "what_happened_ai"
+    assert cfg.MLFLOW_TRACKING_URI == f"sqlite:///{(cfg.REPO_ROOT / 'mlflow.db').as_posix()}"
     assert cfg.KEYFRAME_COUNT == 3
     assert cfg.KEYFRAME_RESIZE_WIDTH == 336
     assert cfg.VLM_MODEL == "Qwen/Qwen2-VL-2B-Instruct"
