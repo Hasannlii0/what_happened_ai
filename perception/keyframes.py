@@ -54,7 +54,7 @@ def extract_keyframes(
         frames = []
         if timestamps and total_frames > 0 and fps > 0:
             indices = sorted(
-                {min(int(t * fps), total_frames - 1) for t in timestamps if t >= 0}
+                {min(round(t * fps), total_frames - 1) for t in timestamps if t >= 0}
             )
             frames = _frames_by_seek(cap, indices)
 
@@ -116,7 +116,9 @@ def extract_evidence(
         wanted = {}
         for i, t in enumerate(timestamps):
             if t >= 0:
-                index = int(t * fps)
+                # t is frame / fps in floating point, so int() can land on the
+                # previous frame; round() is the exact inverse.
+                index = round(t * fps)
                 if total_frames > 0:
                     index = min(index, total_frames - 1)
                 wanted.setdefault(index, []).append(i)

@@ -79,7 +79,7 @@ def make_working_copy(width, height):
     return config.WORK_VIDEO, work_width, work_height
 
 
-def reencode_annotated(save_dir, source_stem):
+def reencode_annotated(save_dir, source_stem, fps):
     # Anything already at this path is a previous run's video and must never be
     # served as this one's.
     config.ANNOTATED_VIDEO.unlink(missing_ok=True)
@@ -102,6 +102,11 @@ def reencode_annotated(save_dir, source_stem):
         "-y",
         "-loglevel",
         "error",
+        # Ultralytics writes its video at int(fps), so a 29.97 upload comes back
+        # at 29 and every timestamp drifts. As an INPUT option, -r re-times the
+        # same frames at the upload's true rate without dropping or adding any.
+        "-r",
+        str(fps),
         "-i",
         str(raw_path),
         "-vf",
@@ -213,7 +218,7 @@ def run():
         mlflow.log_metric("num_unique_tracks", len(unique_track_ids))
         mlflow.log_artifact(str(config.DETECTIONS_JSON))
 
-        reencode_annotated(Path(model.predictor.save_dir), Path(source).stem)
+        reencode_annotated(Path(model.predictor.save_dir), Path(source).stem, fps)
         if source == config.WORK_VIDEO:
             config.WORK_VIDEO.unlink(missing_ok=True)
 
