@@ -30,8 +30,12 @@ def _load():
     return _model, _processor, _device
 
 
+def pick_device():
+    return config.VLM_DEVICE or ("cuda" if torch.cuda.is_available() else "cpu")
+
+
 def _build():
-    device = config.VLM_DEVICE or ("cuda" if torch.cuda.is_available() else "cpu")
+    device = pick_device()
     # float32 weights for a 2B model are ~8GB, which does not fit a default
     # Docker memory budget. bfloat16 halves that and keeps float32's exponent
     # range, so it does not overflow the way float16 does on CPU.

@@ -63,6 +63,13 @@ def timecode(seconds):
     return f"{int(seconds) // 60:02d}:{seconds % 60:04.1f}"
 
 
+def fetch_device():
+    res, err = call_api("get", "/device", API_TIMEOUT)
+    if err or res.status_code != 200:
+        return None
+    return res.json()
+
+
 def fetch_evidence(count):
     frames = {}
     for i in range(count):
@@ -195,6 +202,18 @@ h1, h2, h3, p, span, label, div { font-family: 'IBM Plex Sans', sans-serif; }
     display: flex; align-items: center; gap: 8px;
 }
 .status .led { width: 6px; height: 6px; border-radius: 50%; }
+
+.device {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+.device-gpu { color: var(--ok); border: 1px solid rgba(95,201,140,0.40); background: rgba(95,201,140,0.10); }
+.device-cpu { color: var(--danger); border: 1px solid rgba(232,116,106,0.45); background: rgba(232,116,106,0.10); }
+.device-note { font-size: 12.5px; color: var(--text-2); margin: -12px 0 18px 2px; }
+.device-note b { color: var(--danger); font-weight: 600; }
 
 .meta {
     flex-grow: 1;
@@ -435,6 +454,9 @@ if "evidence" not in st.session_state:
     st.session_state.evidence = {}
 if "describe_pending" not in st.session_state:
     st.session_state.describe_pending = False
+# Cached only once it succeeds, so a UI that loads before the API retries.
+if not st.session_state.get("device"):
+    st.session_state.device = fetch_device()
 
 header = st.empty()
 
@@ -456,14 +478,29 @@ def render_header(status, result=None):
             f'<span class="sep">/</span><span>{span:.1f}s span</span>'
         )
 
+    device, note = "", ""
+    info = st.session_state.get("device")
+    if info and info["device"] == "gpu":
+        name = html.escape((info["name"] or "").replace("NVIDIA GeForce ", ""))
+        device = f'<span class="device device-gpu">GPU &middot; {name}</span>'
+    elif info:
+        device = '<span class="device device-cpu">CPU</span>'
+        note = (
+            '<div class="device-note"><b>Running on the CPU</b>: AI reports take '
+            "minutes. If this machine has an NVIDIA GPU, start the app with "
+            "<code>run.cmd</code> (Windows) or <code>./run.sh</code>.</div>"
+        )
+
     header.markdown(
         f"""
 <div class="topbar">
   <span class="mark"><span class="mark-dot"></span>WHAT HAPPENED HERE</span>
   <span class="rule"></span>
   <span class="status" style="color:{tone}"><span class="led" style="background:{led}"></span>{status}</span>
+  {device}
   <span class="meta">{meta}</span>
 </div>
+{note}
 """,
         unsafe_allow_html=True,
     )

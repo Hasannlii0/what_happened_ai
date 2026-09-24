@@ -266,6 +266,17 @@ def annotated_video():
     return FileResponse(config.ANNOTATED_VIDEO, media_type="video/mp4")
 
 
+@app.get("/device")
+def device():
+    import torch
+
+    from reasoning.vlm_qa import pick_device
+
+    if pick_device().startswith("cuda"):
+        return {"device": "gpu", "name": torch.cuda.get_device_name(0)}
+    return {"device": "cpu", "name": None}
+
+
 @app.post("/describe")
 def describe():
     event_log = _events_from_last_analysis()
