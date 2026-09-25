@@ -1,0 +1,19 @@
+services:
+  api:
+    image: what-happened-ai-api-gpu
+    build:
+      args:
+        # cu126 carries the same torch the cpu index does; cu121 stopped at
+        # 2.5.1, which left the GPU path ten minor versions behind the CPU one.
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/cu126
+    environment:
+      # 336px keyframes are a CPU compromise. On an RTX 4060, 512px costs ~5s
+      # more per report and reads fine detail the smaller frames get wrong.
+      - WH_KEYFRAME_RESIZE_WIDTH=512
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

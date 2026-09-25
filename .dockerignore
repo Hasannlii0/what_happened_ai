@@ -1,0 +1,12 @@
+.git
+.gitignore
+__pycache__/
+*.pyc
+.venv/
+venv/
+mlruns/
+*.mp4
+!yolov8n.pt
+runs/
+.pytest_cache/
+.DS_Store

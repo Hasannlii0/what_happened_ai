@@ -2,7 +2,15 @@
 __pycache__/
 *.pyc
 runs/
+mlruns/
 *.mp4
 *.avi
-detections.json
+perception/detections.json
+perception/keyframes/
+perception/evidence/
 .env
+reasoning/tts_output/
+.streamlit/secrets.toml
+mlflow.db
+.pytest_cache/
+.ruff_cache/

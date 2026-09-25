@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+python-multipart
+pydantic>=2
+ultralytics>=8.3,<9
+opencv-python
+transformers>=4.45,<6
+accelerate
+qwen-vl-utils
+huggingface_hub
+mlflow
+faster-whisper>=1.0,<2
+gtts
+lap>=0.5.12
